@@ -35,7 +35,7 @@ echo     "MSVC v143 - VS 2022 C++ x64/x86 Spectre-mitigated libs" component via
 echo     Visual Studio Installer, then rerun npm install so @lydell/node-pty can
 echo     unpack its platform binaries.
 echo.
-pause
+call :maybePause
 set EXIT_CODE=0
 goto :end
 
@@ -48,7 +48,7 @@ echo       2. Install the "MSVC v143 - VS 2022 C++ x64/x86 Spectre-mitigated lib
 echo          component if @lydell/node-pty needs to rebuild.
 echo       3. Delete node_modules and rerun install.bat.
 echo.
-pause
+call :maybePause
 set EXIT_CODE=1
 goto :end
 
@@ -62,7 +62,7 @@ exit /b 0
 :requireCommand
 where "%~1" >nul 2>&1
 if errorlevel 1 (
-  echo [!] %~2 ("%~1") is not available on PATH.
+  echo [!] %~2 - command "%~1" is not available on PATH.
   echo     Install it and reopen this window.
   exit /b 1
 )
@@ -94,6 +94,11 @@ if exist "package-lock.json" (
   set "NPM_CMD=npm ci"
   set "DISPLAY_NPM_CMD=npm ci"
 )
+exit /b 0
+
+:maybePause
+if /i "%SKIP_INSTALL_PAUSE%"=="1" exit /b 0
+pause
 exit /b 0
 
 :end
