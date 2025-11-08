@@ -6,7 +6,9 @@ A powerful Node.js-based terminal interface with dark mode, multi-tab support, a
 
 - **Dark Mode UI**: Easy on the eyes with a professional dark theme
 - **Multi-Tab Support**: Open multiple terminal sessions simultaneously
+- **Multi-Project Workspace**: Project selector in the header; each project has its own tab set
 - **Embedded Terminals**: Optional PTY-powered terminals keep your CLIs inside SuperCLI with automatic fallback to external windows
+- **Deep Scrollback + Navigation**: 10,000-line scrollback with PageUp/PageDown and Ctrl+Home/End
 - **Image Paste**: Paste images directly into the input field - they're automatically saved to your project folder
 - **Project Management**: Organized folder structure with automatic temp and image directories
 - **Cross-Platform**: Works on Windows, macOS, and Linux
@@ -47,17 +49,21 @@ npm run dev
 
 ### Using SuperCLI
 
-1. **Select a Project Folder**
-   - Click "Select Project Folder" in the top right
-   - Choose or create a folder for your project
-   - SuperCLI will create a `.supercli` folder with:
+1. **Create or Open a Project**
+   - Click "+" to add a tab and choose a CLI
+   - Check "New project" in the modal to pick a folder (or reuse the current active project)
+   - SuperCLI creates a `.supercli` folder with:
      - `images/` - For pasted images
      - `temp/` - For temporary files
      - `project.json` - Project metadata
 
-2. **Managing Tabs**
-   - Click the "+" button to create a new terminal tab
-   - Click on tabs to switch between terminals
+2. **Switch Projects**
+   - Use the selector at the left of the tabs to switch between projects
+   - Each project shows only its own terminal tabs
+
+3. **Managing Tabs**
+   - Click the "+" button to create a new terminal tab in the active project
+   - Click on tabs to switch between terminals within that project
    - Click the "×" on a tab to close it
 
 3. **Using the Terminal**
@@ -77,6 +83,8 @@ npm run dev
 - `Enter` - Send command to embedded terminal
 - `Shift+Enter` - New line in input field
 - `Ctrl+V` - Paste (supports both text and images)
+- `PageUp` / `PageDown` - Scroll a page in terminal
+- `Ctrl+Home` / `Ctrl+End` - Jump to top/bottom of terminal
 
 ## Project Structure
 

@@ -116,7 +116,7 @@ function createEmbeddedTerminal(id, cwd, cliCommand) {
 
   const isWindows = os.platform() === 'win32';
   const shell = isWindows ? 'powershell.exe' : process.env.SHELL || '/bin/bash';
-  const shellArgs = isWindows ? ['-NoLogo'] : ['-l'];
+  const shellArgs = isWindows ? ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass'] : ['-l'];
 
   const ptyProcess = pty.spawn(shell, shellArgs, {
     name: 'xterm-color',
@@ -202,7 +202,7 @@ function createExternalTerminal(id, cwd, cliCommand) {
     const commandScript = scriptParts.join('; ');
     const escapedCommandScript = commandScript.replace(/'/g, "''");
     const startProcessCommand =
-      `Start-Process PowerShell -ArgumentList '-NoExit','-NoLogo','-Command','& { ${escapedCommandScript} }' -WorkingDirectory '${safeCwd}'`;
+      `Start-Process PowerShell -ArgumentList '-NoExit','-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-Command','& { ${escapedCommandScript} }' -WorkingDirectory '${safeCwd}'`;
 
     const powershellArgs = [
       '-NoProfile',

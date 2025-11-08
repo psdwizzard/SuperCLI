@@ -1,5 +1,11 @@
 # SuperCLI - Project Overview
 
+## What's New
+
+- Multi-project workspace with a project selector in the header. Each project shows its own set of tabs; switching the selector swaps the visible terminals to that project's tabs.
+- Improved terminal scrolling: deeper scrollback (10,000 lines) and keyboard navigation (PageUp/PageDown, Ctrl+Home/End).
+
+
 ## What This App Does
 SuperCLI is an Electron desktop app that manages multiple AI coding CLIs (Claude, Codex, Gemini, etc.) inside one tabbed interface. It gives you:
 

@@ -206,6 +206,25 @@ body {
   flex: 1;
 }
 
+.project-select {
+  display: flex;
+  align-items: center;
+}
+
+#projectSelector {
+  background-color: #2d2d2d;
+  color: #d4d4d4;
+  border: 1px solid #3e3e3e;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-right: 8px;
+  min-width: 160px;
+}
+
+#projectSelector:disabled {
+  opacity: 0.7;
+}
+
 .tabs {
   display: flex;
   gap: 4px;
@@ -456,6 +475,8 @@ body {
 
 .xterm .xterm-viewport {
   background-color: #1e1e1e;
+  /* Ensure scrollbars are available for deep history */
+  overflow-y: auto;
 }
 
 .xterm .xterm-screen {

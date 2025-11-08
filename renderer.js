@@ -1,6 +1,7 @@
 console.log('Renderer.js loading...');
 
 const { ipcRenderer, clipboard } = require('electron');
+const path = require('path');
 
 let Terminal, FitAddon;
 
@@ -33,13 +34,57 @@ console.log('electronAPI created');
 
 // Application state
 const state = {
-  projectPath: null,
+  // Multi-project support
+  projects: new Map(), // key: projectPath, value: { id, path, name, tabIds: [] }
+  activeProjectPath: null,
+  // Metadata of last-selected/active project from dialog
   projectInfo: null,
   terminals: new Map(),
   activeTerminalId: null,
   terminalCounter: 0,
   selectedCli: null
 };
+
+function ensureProject(projectPath) {
+  if (!projectPath) return null;
+  if (!state.projects.has(projectPath)) {
+    state.projects.set(projectPath, {
+      id: `proj-${state.projects.size + 1}`,
+      path: projectPath,
+      name: path.basename(projectPath),
+      tabIds: []
+    });
+    updateProjectSelector();
+  }
+  return state.projects.get(projectPath);
+}
+
+function setActiveProject(projectPath) {
+  const proj = ensureProject(projectPath);
+  state.activeProjectPath = projectPath;
+  if (projectPathElement) {
+    projectPathElement.textContent = projectPath || 'No project selected';
+    projectPathElement.title = projectPath || '';
+  }
+  updateProjectSelector();
+  refreshTabsForActiveProject();
+  return proj;
+}
+
+function updateProjectSelector() {
+  if (!projectSelector) return;
+  // Build options list from projects map
+  const options = Array.from(state.projects.values()).map(p => ({ value: p.path, label: p.name }));
+  projectSelector.innerHTML = '';
+  options.forEach(opt => {
+    const el = document.createElement('option');
+    el.value = opt.value;
+    el.textContent = opt.label;
+    if (opt.value === state.activeProjectPath) el.selected = true;
+    projectSelector.appendChild(el);
+  });
+  projectSelector.disabled = options.length <= 1;
+}
 
 function setupTerminalClipboardShortcuts(xterm, terminalId) {
   if (!xterm || typeof xterm.attachCustomKeyEventHandler !== 'function') {
@@ -52,6 +97,7 @@ function setupTerminalClipboardShortcuts(xterm, terminalId) {
     }
 
     const key = event.key || '';
+    const code = event.code || '';
     const keyLower = key.toLowerCase();
     const ctrlOrCmd = event.ctrlKey || event.metaKey;
     const isCopyShortcut = (ctrlOrCmd && keyLower === 'c') || (event.ctrlKey && key === 'Insert');
@@ -89,6 +135,33 @@ function setupTerminalClipboardShortcuts(xterm, terminalId) {
       return false;
     }
 
+    // Scrolling/navigation shortcuts for better history browsing
+    // PageUp/PageDown scroll roughly a terminal page
+    if (code === 'PageUp' || key === 'PageUp') {
+      const lines = Math.max(1, (xterm.rows || 24) - 1);
+      xterm.scrollLines(-lines);
+      event.preventDefault?.();
+      return false;
+    }
+    if (code === 'PageDown' || key === 'PageDown') {
+      const lines = Math.max(1, (xterm.rows || 24) - 1);
+      xterm.scrollLines(lines);
+      event.preventDefault?.();
+      return false;
+    }
+
+    // Ctrl+Home / Ctrl+End jump to top/bottom
+    if ((code === 'Home' || key === 'Home') && ctrlOrCmd) {
+      xterm.scrollToTop();
+      event.preventDefault?.();
+      return false;
+    }
+    if ((code === 'End' || key === 'End') && ctrlOrCmd) {
+      xterm.scrollToBottom();
+      event.preventDefault?.();
+      return false;
+    }
+
     return true;
   });
 }
@@ -96,6 +169,7 @@ function setupTerminalClipboardShortcuts(xterm, terminalId) {
 // DOM elements
 let tabsContainer, terminalContainer, newTabBtn, debugBtn;
 let projectPathElement, inputField, sendBtn, inputInfo;
+let projectSelector;
 let cliModal, cliOptions, customCliInput, customCliCommand, modalCancel, modalConfirm, newProjectCheckbox;
 
 // Initialize
@@ -109,6 +183,7 @@ async function init() {
     newTabBtn = document.getElementById('newTabBtn');
     debugBtn = document.getElementById('debugBtn');
     projectPathElement = document.getElementById('projectPath');
+    projectSelector = document.getElementById('projectSelector');
     inputField = document.getElementById('inputField');
     sendBtn = document.getElementById('sendBtn');
     inputInfo = document.getElementById('inputInfo');
@@ -143,6 +218,15 @@ function setupEventListeners() {
     debugBtn.addEventListener('click', handleDebugButton);
   }
 
+  if (projectSelector) {
+    projectSelector.addEventListener('change', () => {
+      const newPath = projectSelector.value;
+      if (newPath && newPath !== state.activeProjectPath) {
+        setActiveProject(newPath);
+      }
+    });
+  }
+
   // Modal event listeners
   modalCancel.addEventListener('click', hideCliModal);
   modalConfirm.addEventListener('click', handleCliConfirm);
@@ -175,7 +259,7 @@ function setupEventListeners() {
       if (items[i].type.indexOf('image') !== -1) {
         e.preventDefault();
 
-        if (!state.projectPath) {
+        if (!state.activeProjectPath) {
           inputInfo.textContent = 'Please select a project folder first to paste images';
           inputInfo.style.color = '#f48771';
           setTimeout(() => {
@@ -190,7 +274,7 @@ function setupEventListeners() {
 
         reader.onload = async (event) => {
           const imageData = event.target.result;
-          const result = await window.electronAPI.saveImage(state.projectPath, imageData);
+          const result = await window.electronAPI.saveImage(state.activeProjectPath, imageData);
 
           if (result.success) {
             // Insert the file path at cursor position
@@ -356,19 +440,17 @@ async function handleCliConfirm() {
 
   hideCliModal();
 
-  // Select folder if not already selected
-  if (!state.projectPath || requestNewProject) {
+  // Select folder if not already selected or creating new project
+  if (!state.activeProjectPath || requestNewProject) {
     console.log('Selecting project folder...', {
-      hasExistingPath: Boolean(state.projectPath),
+      hasExistingPath: Boolean(state.activeProjectPath),
       requestNewProject
     });
     const result = await window.electronAPI.selectProjectFolder();
     console.log('Folder selection result:', result);
     if (result) {
-      state.projectPath = result.projectPath;
       state.projectInfo = result;
-      projectPathElement.textContent = result.projectPath;
-      projectPathElement.title = result.projectPath;
+      setActiveProject(result.projectPath);
     } else {
       // User cancelled folder selection
       console.log('User cancelled folder selection');
@@ -391,10 +473,8 @@ async function selectProjectFolder() {
   const result = await window.electronAPI.selectProjectFolder();
 
   if (result) {
-    state.projectPath = result.projectPath;
     state.projectInfo = result;
-    projectPathElement.textContent = result.projectPath;
-    projectPathElement.title = result.projectPath;
+    setActiveProject(result.projectPath);
     inputInfo.textContent = 'Project folder selected';
     inputInfo.style.color = '#4ec9b0';
     setTimeout(() => {
@@ -414,7 +494,7 @@ async function createNewTerminal(cliCommand) {
   }
 
   const id = `terminal-${state.terminalCounter++}`;
-  const cwd = state.projectPath || undefined;
+  const cwd = state.activeProjectPath || undefined;
 
   console.log('Creating terminal with id:', id, 'for CLI:', cliCommand);
 
@@ -444,7 +524,10 @@ async function createNewTerminal(cliCommand) {
     },
     fontSize: 14,
     fontFamily: 'Consolas, "Courier New", monospace',
-    scrollback: 1000
+    // Allow much deeper history for scrolling back
+    scrollback: 10000,
+    // Keep view pinned when user types
+    scrollOnUserInput: true
   });
 
   const fitAddon = new FitAddon();
@@ -511,11 +594,18 @@ async function createNewTerminal(cliCommand) {
     wrapper,
     resizeObserver,
     cliCommand,
-    mode: terminalMode
+    mode: terminalMode,
+    projectPath: state.activeProjectPath || null
   });
 
-  // Create tab with CLI name
-  createTab(id, cliCommand);
+  // Create tab with CLI name (filtered per active project)
+  if (state.activeProjectPath) {
+    const proj = ensureProject(state.activeProjectPath);
+    if (!proj.tabIds.includes(id)) proj.tabIds.push(id);
+    refreshTabsForActiveProject();
+  } else {
+    createTab(id, cliCommand);
+  }
 
   // Activate this terminal
   activateTerminal(id);
@@ -548,6 +638,31 @@ function createTab(id, cliCommand) {
   tab.addEventListener('click', () => activateTerminal(id));
 
   tabsContainer.appendChild(tab);
+}
+
+function refreshTabsForActiveProject() {
+  // Clear all and rebuild list for active project
+  tabsContainer.innerHTML = '';
+  const proj = state.projects.get(state.activeProjectPath);
+  const tabIds = proj?.tabIds || [];
+  tabIds.forEach(tid => {
+    const t = state.terminals.get(tid);
+    if (t) createTab(tid, t.cliCommand);
+  });
+
+  // Ensure an active terminal belongs to the active project
+  if (!proj) {
+    return;
+  }
+  if (!proj.tabIds.includes(state.activeTerminalId)) {
+    if (proj.tabIds.length > 0) {
+      activateTerminal(proj.tabIds[0]);
+    } else {
+      // Nothing to activate
+      state.activeTerminalId = null;
+      updateInputInfoForTerminal(null);
+    }
+  }
 }
 
 // Activate terminal
@@ -585,7 +700,8 @@ function updateInputInfoForTerminal(terminal) {
   if (!inputInfo) return;
 
   if (!terminal) {
-    inputInfo.textContent = 'Ready';
+    const proj = state.projects.get(state.activeProjectPath);
+    inputInfo.textContent = proj ? `Project: ${proj.name}` : 'Ready';
     inputInfo.style.color = '#858585';
     return;
   }
@@ -621,13 +737,21 @@ async function closeTerminal(id) {
     tab.remove();
   }
 
+  // Remove from project list and refresh tabs if necessary
+  if (terminal?.projectPath && state.projects.has(terminal.projectPath)) {
+    const proj = state.projects.get(terminal.projectPath);
+    proj.tabIds = proj.tabIds.filter(tid => tid !== id);
+  }
+
   // If this was the active terminal, activate another
   if (state.activeTerminalId === id) {
-    const remainingTerminals = Array.from(state.terminals.keys());
-    if (remainingTerminals.length > 0) {
-      activateTerminal(remainingTerminals[0]);
+    const proj = state.projects.get(state.activeProjectPath);
+    const remaining = proj?.tabIds || [];
+    if (remaining.length > 0) {
+      activateTerminal(remaining[0]);
     } else {
       state.activeTerminalId = null;
+      refreshTabsForActiveProject();
       // Show CLI modal to create a new terminal
       showCliModal();
     }
