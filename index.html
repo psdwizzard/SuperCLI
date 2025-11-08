@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SuperCLI</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="node_modules/@xterm/xterm/css/xterm.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- CLI Selection Modal -->
+    <div class="modal" id="cliModal">
+      <div class="modal-content">
+        <h2>Select AI Coding CLI</h2>
+        <p class="modal-subtitle">Choose which CLI to launch for this tab</p>
+        <div class="cli-options">
+          <button class="cli-option" data-cli="claude">
+            <div class="cli-icon">🤖</div>
+            <div class="cli-name">Claude</div>
+          </button>
+          <button class="cli-option" data-cli="codex">
+            <div class="cli-icon">💻</div>
+            <div class="cli-name">Codex</div>
+          </button>
+          <button class="cli-option" data-cli="gemini">
+            <div class="cli-icon">✨</div>
+            <div class="cli-name">Gemini</div>
+          </button>
+          <button class="cli-option" data-cli="custom">
+            <div class="cli-icon">⚙️</div>
+            <div class="cli-name">Custom</div>
+          </button>
+        </div>
+        <div class="custom-cli-input" id="customCliInput" style="display: none;">
+          <input type="text" id="customCliCommand" placeholder="Enter custom CLI command (e.g., aider, cursor-chat)" />
+        </div>
+        <label class="new-project-toggle" for="newProjectCheckbox">
+          <input type="checkbox" id="newProjectCheckbox" />
+          <div class="new-project-copy">
+            <span class="new-project-title">New project</span>
+            <span class="new-project-hint">Pick a different folder before launching this tab</span>
+          </div>
+        </label>
+        <div class="modal-actions">
+          <button class="modal-btn modal-cancel" id="modalCancel">Cancel</button>
+          <button class="modal-btn modal-confirm" id="modalConfirm">Launch</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Header with tabs -->
+    <div class="header">
+      <div class="tabs-container">
+        <div class="tabs" id="tabs"></div>
+        <button class="new-tab-btn" id="newTabBtn" title="New AI CLI">+</button>
+      </div>
+      <div class="project-info">
+        <span class="project-path" id="projectPath">No project selected</span>
+        <button class="debug-btn" id="debugBtn" title="Open DevTools">Debug Tools</button>
+      </div>
+    </div>
+
+    <!-- Terminal display area -->
+    <div class="terminal-container" id="terminalContainer"></div>
+
+    <!-- Input area at bottom -->
+    <div class="input-container">
+      <div class="input-wrapper">
+        <textarea
+          class="input-field"
+          id="inputField"
+          placeholder="Type commands here to see them logged... (The AI CLI runs in the external window)"
+          rows="1"
+        ></textarea>
+        <button class="send-btn" id="sendBtn">Send</button>
+      </div>
+      <div class="input-info">
+        <span id="inputInfo">Ready</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
