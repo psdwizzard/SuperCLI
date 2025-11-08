@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "profile": {
+    "name": "Default User",
+    "notes": ""
+  },
+  "defaults": {
+    "session": {
+      "restore_on_launch": false,
+      "remember_window_bounds": false
+    },
+    "ui": {
+      "theme": "end-times",
+      "font_size": 14
+    }
+  },
+  "language_prefs": {
+    "python": {
+      "venv": {
+        "auto_enable_when_dependency_count_gte": 2,
+        "venv_dir": ".venv",
+        "python_executable": "python",
+        "use_requirements_txt": false
+      },
+      "entrypoint": "main.py"
+    }
+  }
+}

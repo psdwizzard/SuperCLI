@@ -14,6 +14,42 @@ try {
 // Store active terminal sessions
 const terminals = new Map();
 let mainWindow;
+// Track file watchers for TODO.md per project
+const todoWatchers = new Map();
+
+// Load user preferences from project-level `.user` and home-level fallback
+function loadUserPreferences(projectPath) {
+  const prefs = { version: 1, defaults: {}, language_prefs: {} };
+  try {
+    // Project-level .user
+    if (projectPath) {
+      const projectUserPath = path.join(projectPath, '.user');
+      if (fs.existsSync(projectUserPath)) {
+        const raw = fs.readFileSync(projectUserPath, 'utf8');
+        Object.assign(prefs, JSON.parse(raw));
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse project .user:', e.message);
+  }
+
+  try {
+    // Home-level fallback (e.g., ~/.supercli.user)
+    const homeUserPath = path.join(os.homedir(), '.supercli.user');
+    if (fs.existsSync(homeUserPath)) {
+      const rawHome = fs.readFileSync(homeUserPath, 'utf8');
+      const homePrefs = JSON.parse(rawHome);
+      // Merge only missing keys from home into prefs (project has precedence)
+      for (const [k, v] of Object.entries(homePrefs)) {
+        if (prefs[k] === undefined) prefs[k] = v;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse home .supercli.user:', e.message);
+  }
+
+  return prefs;
+}
 
 function escapePowerShellSingleQuotes(value = '') {
   return String(value).replace(/'/g, "''");
@@ -60,6 +96,30 @@ function createProjectStructure(projectPath) {
     fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
   }
 
+  // Ensure a root-level TODO.md exists with usage instructions
+  const rootTodo = path.join(projectPath, 'TODO.md');
+  if (!fs.existsSync(rootTodo)) {
+    const todoTemplate = `# TODO\n\n` +
+      `SuperCLI reads tasks from this file. Use Markdown checkbox items so they appear in the in-app Todo panel.\n\n` +
+      `How to write tasks:\n\n` +
+      `- Use \"- [ ]\" for incomplete and \"- [x]\" for complete.\n` +
+      `- One task per line. You can group with headings if you like.\n` +
+      `- Example:\n` +
+      `  - [ ] Set up virtual environment\n` +
+      `  - [ ] Implement feature X\n` +
+      `  - [x] Write README\n\n` +
+      `Tips:\n` +
+      `- Use the Todo button in SuperCLI to show/hide the panel.\n` +
+      `- Ticking a box or adding an item updates this file.\n` +
+      `- Click Reload in the panel to pull latest changes if you edit this file externally.\n`;
+    try {
+      fs.writeFileSync(rootTodo, todoTemplate, 'utf8');
+    } catch (e) {
+      console.warn('Unable to initialize TODO.md:', e.message);
+    }
+  }
+
+
   return {
     tempDir,
     imagesDir,
@@ -76,10 +136,215 @@ ipcMain.handle('select-project-folder', async () => {
   if (!result.canceled && result.filePaths.length > 0) {
     const projectPath = result.filePaths[0];
     const structure = createProjectStructure(projectPath);
-    return { projectPath, ...structure };
+    const userPrefs = loadUserPreferences(projectPath);
+    return { projectPath, ...structure, userPrefs };
   }
 
   return null;
+});
+
+// Expose an explicit loader for preferences
+ipcMain.handle('load-user-preferences', async (event, projectPath) => {
+  try {
+    return { success: true, preferences: loadUserPreferences(projectPath) };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Load project TODO list from root-level TODO.md (fallback to legacy .supercli/.todo)
+ipcMain.handle('load-todo', async (event, projectPath) => {
+  try {
+    if (!projectPath) throw new Error('Missing projectPath');
+    const rootTodo = path.join(projectPath, 'TODO.md');
+    const rootTodoLower = path.join(projectPath, 'todo.md');
+    const legacyJson = path.join(projectPath, '.supercli', '.todo');
+
+    let items = [];
+    let sections = [];
+    if (fs.existsSync(rootTodo)) {
+      const md = fs.readFileSync(rootTodo, 'utf8');
+      ({ items, sections } = parseTodoMarkdown(md));
+    } else if (fs.existsSync(rootTodoLower)) {
+      const md = fs.readFileSync(rootTodoLower, 'utf8');
+      ({ items, sections } = parseTodoMarkdown(md));
+    } else if (fs.existsSync(legacyJson)) {
+      // Legacy support: convert JSON to items
+      const raw = fs.readFileSync(legacyJson, 'utf8').trim();
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          items = Array.isArray(parsed) ? parsed : (parsed.items || []);
+        } catch (e) {
+          items = raw.split(/\r?\n/).filter(Boolean).map(t => ({ text: t, done: false }));
+        }
+      }
+    } else {
+      // Initialize an empty TODO.md
+      const initial = '# TODO\n\n';
+      fs.writeFileSync(rootTodo, initial, 'utf8');
+      items = [];
+    }
+
+    // If sections not populated (legacy paths), create a default section
+    if (!sections || sections.length === 0) {
+      sections = [];
+      if (items.length > 0) {
+        sections.push({ title: 'Uncategorized', items });
+      }
+    }
+
+    return { success: true, items, sections };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Save project TODO list to root-level TODO.md
+ipcMain.handle('save-todo', async (event, projectPath, items) => {
+  try {
+    if (!projectPath) throw new Error('Missing projectPath');
+    const rootTodo = path.join(projectPath, 'TODO.md');
+    let md;
+    if (Array.isArray(items)) {
+      // Back-compat: items array only (no sections)
+      md = serializeTodoMarkdown({ items, sections: [] });
+    } else if (items && typeof items === 'object') {
+      // Expecting shape { items?, sections? }
+      md = serializeTodoMarkdown(items);
+    } else {
+      md = serializeTodoMarkdown({ items: [], sections: [] });
+    }
+    fs.writeFileSync(rootTodo, md, 'utf8');
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Helpers: parse/serialize TODO markdown with sections
+function parseTodoMarkdown(md = '') {
+  const lines = String(md).split(/\r?\n/);
+  const sections = [];
+  let current = null;
+  const items = [];
+  for (const line of lines) {
+    const heading = line.match(/^\s{0,3}(#{1,6})\s+(.*)$/);
+    if (heading) {
+      const title = (heading[2] || '').trim();
+      if (title.length === 0) continue;
+      current = { title, items: [] };
+      sections.push(current);
+      continue;
+    }
+    const m = line.match(/^\s*[-*]\s*\[( |x|X)\]\s*(.*)$/);
+    if (m) {
+      const done = m[1].toLowerCase() === 'x';
+      const text = (m[2] || '').trim();
+      const item = { text, done };
+      items.push(item);
+      if (!current) {
+        // Lazily create default section if first items before any heading
+        current = sections.find(s => s.title === 'Uncategorized');
+        if (!current) {
+          current = { title: 'Uncategorized', items: [] };
+          sections.push(current);
+        }
+      }
+      current.items.push(item);
+    }
+  }
+  return { items, sections };
+}
+
+function serializeTodoMarkdown(model) {
+  // model: { sections?: [{title, items:[]}] , items?: [] }
+  const header = '# TODO\n\n';
+  const sections = Array.isArray(model?.sections) && model.sections.length > 0
+    ? model.sections
+    : [{ title: null, items: Array.isArray(model?.items) ? model.items : [] }];
+  let body = '';
+  for (const sec of sections) {
+    if (sec.title) {
+      body += `## ${sec.title}\n`;
+    }
+    for (const it of (sec.items || [])) {
+      body += `- [${it.done ? 'x' : ' '}] ${it.text || ''}\n`;
+    }
+    if (sec.title) body += '\n';
+  }
+  return header + body;
+}
+
+// Watch/unwatch TODO.md for external changes and notify renderer
+ipcMain.handle('watch-todo', async (event, projectPath) => {
+  try {
+    if (!projectPath) throw new Error('Missing projectPath');
+    const rootTodo = path.join(projectPath, 'TODO.md');
+    // Ensure file exists
+    if (!fs.existsSync(rootTodo)) fs.writeFileSync(rootTodo, '# TODO\n\n', 'utf8');
+    // Avoid duplicate watcher
+    if (todoWatchers.has(projectPath)) {
+      return { success: true, watching: true };
+    }
+    let debounceTimer = null;
+    const watcher = fs.watch(rootTodo, { persistent: true }, (eventType) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        try {
+          const md = fs.readFileSync(rootTodo, 'utf8');
+          const parsed = parseTodoMarkdown(md);
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('todo-updated-from-disk', projectPath, { items: parsed.items, sections: parsed.sections });
+          }
+        } catch (_) { /* ignore */ }
+      }, 150);
+    });
+    todoWatchers.set(projectPath, watcher);
+    return { success: true, watching: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('unwatch-todo', async (event, projectPath) => {
+  try {
+    const watcher = todoWatchers.get(projectPath);
+    if (watcher) {
+      try { watcher.close(); } catch (_) {}
+      todoWatchers.delete(projectPath);
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Save preferences to project-level `.user`
+ipcMain.handle('save-user-preferences', async (event, projectPath, preferences) => {
+  try {
+    if (!projectPath) throw new Error('Missing projectPath');
+    const targetPath = path.join(projectPath, '.user');
+
+    // If renderer passed a string, try to parse
+    let prefsObject = preferences;
+    if (typeof prefsObject === 'string') {
+      prefsObject = JSON.parse(prefsObject);
+    }
+    if (typeof prefsObject !== 'object' || prefsObject === null) {
+      throw new Error('Preferences must be an object');
+    }
+
+    // Basic normalization
+    if (!prefsObject.version) {
+      prefsObject.version = 1;
+    }
+
+    fs.writeFileSync(targetPath, JSON.stringify(prefsObject, null, 2), 'utf8');
+    return { success: true, path: targetPath };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 // Create a new terminal session (embedded when @lydell/node-pty is available)
@@ -409,6 +674,12 @@ app.on('window-all-closed', () => {
     }
   });
   terminals.clear();
+
+  // Clean up TODO watchers
+  todoWatchers.forEach((watcher, proj) => {
+    try { watcher.close(); } catch (_) {}
+  });
+  todoWatchers.clear();
 
   if (process.platform !== 'darwin') {
     app.quit();

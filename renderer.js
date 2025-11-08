@@ -16,6 +16,12 @@ try {
 // Create electronAPI wrapper
 window.electronAPI = {
   selectProjectFolder: () => ipcRenderer.invoke('select-project-folder'),
+  loadUserPreferences: (projectPath) => ipcRenderer.invoke('load-user-preferences', projectPath),
+  saveUserPreferences: (projectPath, prefs) => ipcRenderer.invoke('save-user-preferences', projectPath, prefs),
+  loadTodo: (projectPath) => ipcRenderer.invoke('load-todo', projectPath),
+  saveTodo: (projectPath, items) => ipcRenderer.invoke('save-todo', projectPath, items),
+  watchTodo: (projectPath) => ipcRenderer.invoke('watch-todo', projectPath),
+  unwatchTodo: (projectPath) => ipcRenderer.invoke('unwatch-todo', projectPath),
   createTerminal: (id, cwd, cliCommand) => ipcRenderer.invoke('create-terminal', id, cwd, cliCommand),
   writeToTerminal: (id, data) => ipcRenderer.invoke('write-to-terminal', id, data),
   resizeTerminal: (id, cols, rows) => ipcRenderer.invoke('resize-terminal', id, cols, rows),
@@ -30,6 +36,13 @@ window.electronAPI = {
   saveImage: (projectPath, imageData) => ipcRenderer.invoke('save-image', projectPath, imageData)
 };
 
+// External TODO updates
+ipcRenderer.on('todo-updated-from-disk', (event, projectPath, payload) => {
+  if (projectPath !== state.activeProjectPath) return;
+  state.todoByProject.set(projectPath, { sections: payload.sections || [], items: payload.items || [] });
+  renderTodoList();
+});
+
 console.log('electronAPI created');
 
 // Application state
@@ -39,6 +52,8 @@ const state = {
   activeProjectPath: null,
   // Metadata of last-selected/active project from dialog
   projectInfo: null,
+  userPrefsByProject: new Map(),
+  todoByProject: new Map(),
   terminals: new Map(),
   activeTerminalId: null,
   terminalCounter: 0,
@@ -68,6 +83,16 @@ function setActiveProject(projectPath) {
   }
   updateProjectSelector();
   refreshTabsForActiveProject();
+  // Apply theme from project preferences (if available)
+  try {
+    const prefs = state.userPrefsByProject.get(projectPath);
+    const theme = prefs?.defaults?.ui?.theme || 'dark';
+    applyTheme(theme);
+  } catch (_) { /* noop */ }
+  // Refresh TODO for active project if panel visible
+  if (todoPanel && todoPanel.classList.contains('active')) {
+    ensureTodoLoadedForProject(projectPath).then(() => renderTodoList());
+  }
   return proj;
 }
 
@@ -171,6 +196,12 @@ let tabsContainer, terminalContainer, newTabBtn, debugBtn;
 let projectPathElement, inputField, sendBtn, inputInfo;
 let projectSelector;
 let cliModal, cliOptions, customCliInput, customCliCommand, modalCancel, modalConfirm, newProjectCheckbox;
+let settingsBtn, settingsModal, settingsProjectName, settingsUserJson, settingsSave, settingsClose, settingsReload;
+let todoBtn, todoPanel, todoCloseBtn, todoList, todoAddInput, todoAddBtn, todoEmptyState, todoSaveBtn, todoReloadBtn, todoAddSection;
+// Settings form elements (General)
+let profileNameInput, profileNotesInput, restoreOnLaunchChk, rememberWindowBoundsChk, themeSelectEl, fontSizeInput;
+// Settings form elements (Python)
+let pyDepThresholdInput, pyVenvDirInput, pyExeInput, pyUseReqChk, pyEntrypointInput, pyIncludeTemplatesChk, pyInstallBatText, pyRunBatText, settingsGenDefaultsBtn, settingsShowJsonChk;
 
 // Initialize
 async function init() {
@@ -187,6 +218,41 @@ async function init() {
     inputField = document.getElementById('inputField');
     sendBtn = document.getElementById('sendBtn');
     inputInfo = document.getElementById('inputInfo');
+    settingsBtn = document.getElementById('settingsBtn');
+    todoBtn = document.getElementById('todoBtn');
+    settingsModal = document.getElementById('settingsModal');
+    settingsProjectName = document.getElementById('settingsProjectName');
+    settingsUserJson = document.getElementById('settingsUserJson');
+    settingsSave = document.getElementById('settingsSave');
+    settingsClose = document.getElementById('settingsClose');
+    settingsReload = document.getElementById('settingsReload');
+    // Todo controls
+    todoPanel = document.getElementById('todoPanel');
+    todoCloseBtn = document.getElementById('todoCloseBtn');
+    todoList = document.getElementById('todoList');
+    todoAddInput = document.getElementById('todoAddInput');
+    todoAddBtn = document.getElementById('todoAddBtn');
+    todoEmptyState = document.getElementById('todoEmptyState');
+    todoSaveBtn = document.getElementById('todoSaveBtn');
+    todoReloadBtn = document.getElementById('todoReloadBtn');
+    todoAddSection = document.getElementById('todoAddSection');
+    // Settings form inputs
+    profileNameInput = document.getElementById('profileName');
+    profileNotesInput = document.getElementById('profileNotes');
+    restoreOnLaunchChk = document.getElementById('restoreOnLaunch');
+    rememberWindowBoundsChk = document.getElementById('rememberWindowBounds');
+    themeSelectEl = document.getElementById('themeSelect');
+    fontSizeInput = document.getElementById('fontSize');
+    pyDepThresholdInput = document.getElementById('pyDepThreshold');
+    pyVenvDirInput = document.getElementById('pyVenvDir');
+    pyExeInput = document.getElementById('pyExe');
+    pyUseReqChk = document.getElementById('pyUseReq');
+    pyEntrypointInput = document.getElementById('pyEntrypoint');
+    pyIncludeTemplatesChk = document.getElementById('pyIncludeTemplates');
+    pyInstallBatText = document.getElementById('pyInstallBat');
+    pyRunBatText = document.getElementById('pyRunBat');
+    settingsGenDefaultsBtn = document.getElementById('settingsGenDefaults');
+    settingsShowJsonChk = document.getElementById('settingsShowJson');
 
     // Modal elements
     cliModal = document.getElementById('cliModal');
@@ -218,6 +284,73 @@ function setupEventListeners() {
     debugBtn.addEventListener('click', handleDebugButton);
   }
 
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', openSettingsModal);
+  }
+  if (todoBtn) {
+    todoBtn.addEventListener('click', toggleTodoPanel);
+  }
+  if (todoCloseBtn) {
+    todoCloseBtn.addEventListener('click', () => setTodoPanelVisible(false));
+  }
+  if (todoAddBtn) {
+    todoAddBtn.addEventListener('click', handleTodoAdd);
+  }
+  if (todoAddInput) {
+    todoAddInput.addEventListener('keydown', (e) => {
+      const key = e.key || '';
+      const code = e.code || '';
+      if ((key === 'Enter' || code === 'Enter' || code === 'NumpadEnter') && !e.shiftKey) {
+        e.preventDefault();
+        handleTodoAdd();
+      }
+    });
+  }
+  if (todoSaveBtn) {
+    todoSaveBtn.addEventListener('click', saveTodoToDisk);
+  }
+  if (todoReloadBtn) {
+    todoReloadBtn.addEventListener('click', async () => {
+      if (!state.activeProjectPath) return;
+      await ensureTodoLoadedForProject(state.activeProjectPath, true);
+      renderTodoList();
+    });
+  }
+  if (settingsClose) {
+    settingsClose.addEventListener('click', () => settingsModal.classList.remove('active'));
+  }
+  if (settingsReload) {
+    settingsReload.addEventListener('click', reloadSettingsFromDisk);
+  }
+  if (settingsSave) {
+    settingsSave.addEventListener('click', saveSettingsToDisk);
+  }
+  if (settingsGenDefaultsBtn) {
+    settingsGenDefaultsBtn.addEventListener('click', () => {
+      const { install_bat, run_bat } = getDefaultPythonTemplates();
+      const venvDir = (pyVenvDirInput.value || '.venv');
+      const pythonExe = (pyExeInput.value || 'python');
+      const entry = (pyEntrypointInput.value || 'main.py');
+      pyInstallBatText.value = install_bat
+        .replaceAll('{{VENV_DIR}}', venvDir)
+        .replaceAll('{{PYTHON}}', pythonExe);
+      pyRunBatText.value = run_bat
+        .replaceAll('{{VENV_DIR}}', venvDir)
+        .replaceAll('{{ENTRYPOINT}}', entry);
+    });
+  }
+  if (settingsShowJsonChk) {
+    settingsShowJsonChk.addEventListener('change', () => {
+      settingsUserJson.style.display = settingsShowJsonChk.checked ? 'block' : 'none';
+    });
+  }
+  if (themeSelectEl) {
+    themeSelectEl.addEventListener('change', () => {
+      // Live preview theme when selection changes
+      applyTheme(themeSelectEl.value || 'dark');
+    });
+  }
+
   if (projectSelector) {
     projectSelector.addEventListener('change', () => {
       const newPath = projectSelector.value;
@@ -230,6 +363,9 @@ function setupEventListeners() {
   // Modal event listeners
   modalCancel.addEventListener('click', hideCliModal);
   modalConfirm.addEventListener('click', handleCliConfirm);
+
+  // Global keyboard handler for terminal scrolling on active tab
+  window.addEventListener('keydown', handleGlobalTerminalScroll);
 
   // CLI option selection
   cliOptions.forEach(option => {
@@ -345,6 +481,54 @@ function handleInputFieldKeyDown(e) {
   sendCommand();
 }
 
+function isEditableTarget(target) {
+  if (!target) return false;
+  const tag = (target.tagName || '').toLowerCase();
+  if (tag === 'textarea' || tag === 'input') return true;
+  if (target.isContentEditable) return true;
+  return false;
+}
+
+function handleGlobalTerminalScroll(event) {
+  // Avoid interfering with typing inside inputs/textareas
+  if (isEditableTarget(event.target)) {
+    return;
+  }
+
+  const terminal = state.terminals.get(state.activeTerminalId);
+  if (!terminal || !terminal.xterm) return;
+
+  const key = event.key || '';
+  const code = event.code || '';
+  const ctrlOrCmd = event.ctrlKey || event.metaKey;
+
+  // Mirror per-instance shortcuts for consistency across tabs
+  if (code === 'PageUp' || key === 'PageUp') {
+    const lines = Math.max(1, (terminal.xterm.rows || 24) - 1);
+    terminal.xterm.scrollLines(-lines);
+    event.preventDefault?.();
+    return;
+  }
+  if (code === 'PageDown' || key === 'PageDown') {
+    const lines = Math.max(1, (terminal.xterm.rows || 24) - 1);
+    terminal.xterm.scrollLines(lines);
+    event.preventDefault?.();
+    return;
+  }
+  if ((code === 'Home' || key === 'Home') && ctrlOrCmd) {
+    terminal.xterm.scrollToTop();
+    event.preventDefault?.();
+    return;
+  }
+  if ((code === 'End' || key === 'End') && ctrlOrCmd) {
+    terminal.xterm.scrollToBottom();
+    event.preventDefault?.();
+    return;
+  }
+
+  // Initialize TODO visibility on load (hidden by default)
+}
+
 async function handleDebugButton() {
   try {
     const result = await window.electronAPI.openDevTools();
@@ -450,6 +634,9 @@ async function handleCliConfirm() {
     console.log('Folder selection result:', result);
     if (result) {
       state.projectInfo = result;
+      if (result.userPrefs) {
+        state.userPrefsByProject.set(result.projectPath, result.userPrefs);
+      }
       setActiveProject(result.projectPath);
     } else {
       // User cancelled folder selection
@@ -474,6 +661,9 @@ async function selectProjectFolder() {
 
   if (result) {
     state.projectInfo = result;
+    if (result.userPrefs) {
+      state.userPrefsByProject.set(result.projectPath, result.userPrefs);
+    }
     setActiveProject(result.projectPath);
     inputInfo.textContent = 'Project folder selected';
     inputInfo.style.color = '#4ec9b0';
@@ -501,27 +691,7 @@ async function createNewTerminal(cliCommand) {
   // Create XTerm instance
   const xterm = new Terminal({
     cursorBlink: true,
-    theme: {
-      background: '#1e1e1e',
-      foreground: '#d4d4d4',
-      cursor: '#d4d4d4',
-      black: '#000000',
-      brightBlack: '#666666',
-      red: '#cd3131',
-      brightRed: '#f14c4c',
-      green: '#0dbc79',
-      brightGreen: '#23d18b',
-      yellow: '#e5e510',
-      brightYellow: '#f5f543',
-      blue: '#2472c8',
-      brightBlue: '#3b8eea',
-      magenta: '#bc3fbc',
-      brightMagenta: '#d670d6',
-      cyan: '#11a8cd',
-      brightCyan: '#29b8db',
-      white: '#e5e5e5',
-      brightWhite: '#e5e5e5'
-    },
+    theme: getXtermTheme((state.userPrefsByProject.get(state.activeProjectPath)?.defaults?.ui?.theme) || 'dark'),
     fontSize: 14,
     fontFamily: 'Consolas, "Courier New", monospace',
     // Allow much deeper history for scrolling back
@@ -609,6 +779,404 @@ async function createNewTerminal(cliCommand) {
 
   // Activate this terminal
   activateTerminal(id);
+}
+
+function openSettingsModal() {
+  if (!state.activeProjectPath) {
+    if (inputInfo) {
+      inputInfo.textContent = 'Select a project to edit settings';
+      inputInfo.style.color = '#f48771';
+      setTimeout(() => {
+        inputInfo.textContent = 'Ready';
+        inputInfo.style.color = '#858585';
+      }, 2500);
+    }
+    return;
+  }
+  const proj = state.projects.get(state.activeProjectPath);
+  settingsProjectName.textContent = proj ? proj.name : state.activeProjectPath;
+
+  // Populate textarea with cached prefs or fetch
+  const cached = state.userPrefsByProject.get(state.activeProjectPath);
+  if (cached) {
+    settingsUserJson.value = JSON.stringify(cached, null, 2);
+  } else {
+    // Load then open
+    reloadSettingsFromDisk().then(() => {
+      // no-op
+    });
+  }
+
+  settingsModal.classList.add('active');
+}
+
+// TODO panel logic and persistence
+function toggleTodoPanel() {
+  const visible = todoPanel?.classList.contains('active');
+  setTodoPanelVisible(!visible);
+}
+
+function setTodoPanelVisible(visible) {
+  if (!todoPanel) return;
+  if (visible) {
+    todoPanel.classList.add('active');
+    if (state.activeProjectPath) {
+      ensureTodoLoadedForProject(state.activeProjectPath).then(() => renderTodoList());
+    }
+  } else {
+    todoPanel.classList.remove('active');
+  }
+}
+
+async function ensureTodoLoadedForProject(projectPath, forceReload = false) {
+  if (!projectPath) return;
+  if (!forceReload && state.todoByProject.has(projectPath)) return;
+  const res = await window.electronAPI.loadTodo(projectPath);
+  if (res?.success) {
+    state.todoByProject.set(projectPath, { sections: res.sections || [], items: res.items || [] });
+  } else {
+    state.todoByProject.set(projectPath, { sections: [], items: [] });
+  }
+}
+
+function renderTodoList() {
+  if (!todoList) return;
+  const projectPath = state.activeProjectPath;
+  const data = state.todoByProject.get(projectPath) || { sections: [] };
+  const sections = data.sections || [];
+
+  todoList.innerHTML = '';
+  const total = sections.reduce((sum, s) => sum + (s.items?.length || 0), 0);
+  if (todoEmptyState) todoEmptyState.style.display = total === 0 ? 'block' : 'none';
+
+  sections.forEach((section, sIdx) => {
+    if (section.title) {
+      const sTitle = document.createElement('div');
+      sTitle.className = 'todo-section-title';
+      sTitle.textContent = section.title;
+      todoList.appendChild(sTitle);
+    }
+    (section.items || []).forEach((item, iIdx) => {
+      const row = document.createElement('div');
+      row.className = 'todo-item';
+      row.tabIndex = 0;
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'todo-checkbox';
+      cb.checked = Boolean(item.done);
+      cb.addEventListener('change', () => {
+        item.done = Boolean(cb.checked);
+        row.classList.toggle('done', item.done);
+        saveTodoToDisk();
+      });
+      const text = document.createElement('span');
+      text.className = 'todo-text';
+      text.textContent = item.text || '';
+      const actions = document.createElement('div');
+      actions.className = 'todo-actions';
+      const up = document.createElement('button'); up.className='todo-btn'; up.title='Move up'; up.textContent='↑'; up.addEventListener('click',()=>moveTodoItem(sIdx,iIdx,-1));
+      const dn = document.createElement('button'); dn.className='todo-btn'; dn.title='Move down'; dn.textContent='↓'; dn.addEventListener('click',()=>moveTodoItem(sIdx,iIdx,1));
+      const del = document.createElement('button'); del.className='todo-btn danger'; del.title='Delete'; del.textContent='✕'; del.addEventListener('click',()=>deleteTodoItem(sIdx,iIdx));
+      actions.appendChild(up); actions.appendChild(dn); actions.appendChild(del);
+      row.addEventListener('keydown', (e)=>handleTodoRowKeydown(e,sIdx,iIdx));
+      row.appendChild(cb); row.appendChild(text); row.appendChild(actions);
+      if (item.done) row.classList.add('done');
+      todoList.appendChild(row);
+    });
+  });
+}
+
+function handleTodoAdd() {
+  const text = (todoAddInput?.value || '').trim();
+  if (!text) return;
+  const projectPath = state.activeProjectPath;
+  if (!projectPath) return;
+  const data = state.todoByProject.get(projectPath) || { sections: [] };
+  let sectionName = (todoAddSection?.value || '').trim();
+  if (!sectionName) sectionName = 'Uncategorized';
+  let section = data.sections.find(s => s.title === sectionName);
+  if (!section) { section = { title: sectionName, items: [] }; data.sections.push(section); }
+  section.items.push({ text, done: false });
+  state.todoByProject.set(projectPath, data);
+  todoAddInput.value = '';
+  renderTodoList();
+  saveTodoToDisk();
+}
+
+async function saveTodoToDisk() {
+  const projectPath = state.activeProjectPath;
+  if (!projectPath) return;
+  const data = state.todoByProject.get(projectPath) || { sections: [] };
+  await window.electronAPI.saveTodo(projectPath, { sections: data.sections });
+}
+
+function moveTodoItem(sIdx, iIdx, delta) {
+  const projectPath = state.activeProjectPath; if (!projectPath) return;
+  const data = state.todoByProject.get(projectPath); if (!data) return;
+  const sec = data.sections[sIdx]; if (!sec) return;
+  const ni = iIdx + delta; if (ni < 0 || ni >= sec.items.length) return;
+  const [item] = sec.items.splice(iIdx,1); sec.items.splice(ni,0,item);
+  renderTodoList(); saveTodoToDisk();
+}
+
+function deleteTodoItem(sIdx, iIdx) {
+  const projectPath = state.activeProjectPath; if (!projectPath) return;
+  const data = state.todoByProject.get(projectPath); if (!data) return;
+  const sec = data.sections[sIdx]; if (!sec) return;
+  sec.items.splice(iIdx,1);
+  renderTodoList(); saveTodoToDisk();
+}
+
+function handleTodoRowKeydown(e, sIdx, iIdx) {
+  const key = e.key || ''; const code = e.code || '';
+  if (key === 'Delete') { e.preventDefault(); deleteTodoItem(sIdx,iIdx); return; }
+  if ((e.altKey || e.metaKey) && (code === 'ArrowUp' || key === 'ArrowUp')) { e.preventDefault(); moveTodoItem(sIdx,iIdx,-1); return; }
+  if ((e.altKey || e.metaKey) && (code === 'ArrowDown' || key === 'ArrowDown')) { e.preventDefault(); moveTodoItem(sIdx,iIdx,1); return; }
+}
+
+async function reloadSettingsFromDisk() {
+  if (!state.activeProjectPath) return;
+  const res = await window.electronAPI.loadUserPreferences(state.activeProjectPath);
+  if (res?.success) {
+    state.userPrefsByProject.set(state.activeProjectPath, res.preferences);
+    populateSettingsForm(res.preferences);
+    settingsUserJson.value = JSON.stringify(res.preferences, null, 2);
+    inputInfo.textContent = 'Preferences loaded';
+    inputInfo.style.color = '#4ec9b0';
+    setTimeout(() => {
+      updateInputInfoForTerminal(state.terminals.get(state.activeTerminalId) || null);
+    }, 1500);
+  } else {
+    inputInfo.textContent = `Failed to load preferences: ${res?.error || 'unknown error'}`;
+    inputInfo.style.color = '#f48771';
+  }
+}
+
+async function saveSettingsToDisk() {
+  if (!state.activeProjectPath) return;
+  // Build preferences from form fields
+  const prefs = buildPreferencesFromForm();
+  // Keep JSON textarea in sync (for advanced view)
+  settingsUserJson.value = JSON.stringify(prefs, null, 2);
+
+  const res = await window.electronAPI.saveUserPreferences(state.activeProjectPath, prefs);
+  if (res?.success) {
+    state.userPrefsByProject.set(state.activeProjectPath, prefs);
+    inputInfo.textContent = 'Preferences saved';
+    inputInfo.style.color = '#4ec9b0';
+    // Apply theme immediately
+    applyTheme(prefs?.defaults?.ui?.theme || 'dark');
+    setTimeout(() => {
+      updateInputInfoForTerminal(state.terminals.get(state.activeTerminalId) || null);
+    }, 1500);
+  } else {
+    inputInfo.textContent = `Failed to save: ${res?.error || 'unknown error'}`;
+    inputInfo.style.color = '#f48771';
+  }
+}
+
+// Theme management
+const THEME_CLASSNAMES = ['theme-dark','theme-light','theme-deep-blue','theme-light-grey','theme-end-times'];
+
+function applyTheme(themeName) {
+  const body = document.body;
+  // Normalize to class name
+  let cls = 'theme-dark';
+  switch ((themeName || '').toLowerCase()) {
+    case 'light': cls = 'theme-light'; break;
+    case 'deep-blue': cls = 'theme-deep-blue'; break;
+    case 'light-grey': cls = 'theme-light-grey'; break;
+    case 'end-times': cls = 'theme-end-times'; break;
+    default: cls = 'theme-dark';
+  }
+  // Remove any previous theme classes
+  THEME_CLASSNAMES.forEach(c => body.classList.remove(c));
+  body.classList.add(cls);
+
+  // Update xterm theme for all terminals
+  const xtermTheme = getXtermTheme(themeName);
+  state.terminals.forEach(t => {
+    try {
+      if (t?.xterm) {
+        t.xterm.options.theme = xtermTheme;
+      }
+    } catch (e) { /* ignore */ }
+  });
+}
+
+function getXtermTheme(themeName) {
+  const name = (themeName || 'dark').toLowerCase();
+  if (name === 'light' || name === 'light-grey') {
+    return {
+      background: '#ffffff',
+      foreground: '#1e1e1e',
+      cursor: '#1e1e1e',
+      black: '#000000',
+      red: '#cd3131',
+      green: '#0dbc79',
+      yellow: '#e5e510',
+      blue: '#2472c8',
+      magenta: '#bc3fbc',
+      cyan: '#11a8cd',
+      white: '#e5e5e5',
+      brightBlack: '#666666',
+      brightRed: '#f14c4c',
+      brightGreen: '#23d18b',
+      brightYellow: '#f5f543',
+      brightBlue: '#3b8eea',
+      brightMagenta: '#d670d6',
+      brightCyan: '#29b8db',
+      brightWhite: '#1e1e1e'
+    };
+  }
+  if (name === 'deep-blue') {
+    return {
+      background: '#0b1626',
+      foreground: '#d7e7ff',
+      cursor: '#d7e7ff',
+      black: '#0b1626',
+      red: '#ff6b6b',
+      green: '#23d18b',
+      yellow: '#f5f543',
+      blue: '#3b8eea',
+      magenta: '#d670d6',
+      cyan: '#29b8db',
+      white: '#d7e7ff',
+      brightBlack: '#2a3d5e',
+      brightRed: '#ff8c8c',
+      brightGreen: '#45f0a8',
+      brightYellow: '#fff36a',
+      brightBlue: '#66a9ff',
+      brightMagenta: '#e08ae0',
+      brightCyan: '#5fd0ff',
+      brightWhite: '#ffffff'
+    };
+  }
+  if (name === 'end-times') {
+    return {
+      background: '#000000',
+      foreground: '#f5f543',
+      cursor: '#f5f543',
+      black: '#000000',
+      red: '#c8b400',
+      green: '#c8c800',
+      yellow: '#f5f543',
+      blue: '#bfbf00',
+      magenta: '#ffff66',
+      cyan: '#e5e510',
+      white: '#f5f543',
+      brightBlack: '#333333',
+      brightRed: '#d6ca00',
+      brightGreen: '#e1e100',
+      brightYellow: '#ffff80',
+      brightBlue: '#e0e000',
+      brightMagenta: '#ffff99',
+      brightCyan: '#ffff66',
+      brightWhite: '#ffffaa'
+    };
+  }
+  // Default dark
+  return {
+    background: '#1e1e1e',
+    foreground: '#d4d4d4',
+    cursor: '#d4d4d4',
+    black: '#000000',
+    red: '#cd3131',
+    green: '#0dbc79',
+    yellow: '#e5e510',
+    blue: '#2472c8',
+    magenta: '#bc3fbc',
+    cyan: '#11a8cd',
+    white: '#e5e5e5',
+    brightBlack: '#666666',
+    brightRed: '#f14c4c',
+    brightGreen: '#23d18b',
+    brightYellow: '#f5f543',
+    brightBlue: '#3b8eea',
+    brightMagenta: '#d670d6',
+    brightCyan: '#29b8db',
+    brightWhite: '#e5e5e5'
+  };
+}
+
+function getDefaultPythonTemplates() {
+  return {
+    install_bat: "@echo off\r\nsetlocal enabledelayedexpansion\r\nif not exist \"{{VENV_DIR}}\\Scripts\\python.exe\" (\r\n  echo Creating virtual environment in {{VENV_DIR}}...\r\n  {{PYTHON}} -m venv {{VENV_DIR}}\r\n) else (\r\n  echo Using existing virtual environment in {{VENV_DIR}}\r\n)\r\ncall \"{{VENV_DIR}}\\Scripts\\activate.bat\"\r\nif exist requirements.txt (\r\n  echo Installing from requirements.txt...\r\n  pip install -r requirements.txt\r\n) else (\r\n  echo No requirements.txt found. Add your dependencies there.\r\n)\r\necho Done.\r\n",
+    run_bat: "@echo off\r\nsetlocal\r\nif not exist \"{{VENV_DIR}}\\Scripts\\python.exe\" (\r\n  echo Virtual environment not found in {{VENV_DIR}}. Run install.bat first.\r\n  exit /b 1\r\n)\r\ncall \"{{VENV_DIR}}\\Scripts\\activate.bat\"\r\npython {{ENTRYPOINT}}\r\n"
+  };
+}
+
+function populateSettingsForm(prefs) {
+  const profile = prefs?.profile || {};
+  profileNameInput.value = profile.name || '';
+  profileNotesInput.value = profile.notes || '';
+
+  const session = prefs?.defaults?.session || {};
+  restoreOnLaunchChk.checked = Boolean(session.restore_on_launch);
+  rememberWindowBoundsChk.checked = Boolean(session.remember_window_bounds);
+
+  const ui = prefs?.defaults?.ui || {};
+  themeSelectEl.value = ui.theme || 'dark';
+  fontSizeInput.value = ui.font_size != null ? ui.font_size : 14;
+
+  const py = prefs?.language_prefs?.python || {};
+  const venv = py.venv || {};
+  pyDepThresholdInput.value = venv.auto_enable_when_dependency_count_gte != null ? venv.auto_enable_when_dependency_count_gte : 2;
+  pyVenvDirInput.value = venv.venv_dir || '.venv';
+  pyExeInput.value = venv.python_executable || 'python';
+  pyUseReqChk.checked = Boolean(venv.use_requirements_txt);
+  pyEntrypointInput.value = py.entrypoint || 'main.py';
+
+  const scripts = py.scripts || {};
+  const defaults = getDefaultPythonTemplates();
+  const hasTemplates = scripts.install_bat || scripts.run_bat;
+  pyIncludeTemplatesChk.checked = Boolean(hasTemplates);
+  pyInstallBatText.value = scripts.install_bat || defaults.install_bat
+    .replaceAll('{{VENV_DIR}}', pyVenvDirInput.value || '.venv')
+    .replaceAll('{{PYTHON}}', pyExeInput.value || 'python');
+  pyRunBatText.value = scripts.run_bat || defaults.run_bat
+    .replaceAll('{{VENV_DIR}}', pyVenvDirInput.value || '.venv')
+    .replaceAll('{{ENTRYPOINT}}', pyEntrypointInput.value || 'main.py');
+}
+
+function buildPreferencesFromForm() {
+  const prefs = {
+    version: 1,
+    profile: {
+      name: profileNameInput.value || 'Default User',
+      notes: profileNotesInput.value || ''
+    },
+    defaults: {
+      session: {
+        restore_on_launch: Boolean(restoreOnLaunchChk.checked),
+        remember_window_bounds: Boolean(rememberWindowBoundsChk.checked)
+      },
+      ui: {
+        theme: themeSelectEl.value || 'dark',
+        font_size: Number(fontSizeInput.value || 14)
+      }
+    },
+    language_prefs: {
+      python: {
+        venv: {
+          auto_enable_when_dependency_count_gte: Number(pyDepThresholdInput.value || 2),
+          venv_dir: pyVenvDirInput.value || '.venv',
+          python_executable: pyExeInput.value || 'python',
+          use_requirements_txt: Boolean(pyUseReqChk.checked)
+        },
+        entrypoint: pyEntrypointInput.value || 'main.py'
+      }
+    }
+  };
+
+  if (pyIncludeTemplatesChk.checked) {
+    prefs.language_prefs.python.scripts = {
+      install_bat: pyInstallBatText.value || getDefaultPythonTemplates().install_bat,
+      run_bat: pyRunBatText.value || getDefaultPythonTemplates().run_bat
+    };
+  }
+
+  return prefs;
 }
 
 // Create tab

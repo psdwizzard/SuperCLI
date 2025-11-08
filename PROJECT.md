@@ -3,7 +3,10 @@
 ## What's New
 
 - Multi-project workspace with a project selector in the header. Each project shows its own set of tabs; switching the selector swaps the visible terminals to that project's tabs.
-- Improved terminal scrolling: deeper scrollback (10,000 lines) and keyboard navigation (PageUp/PageDown, Ctrl+Home/End).
+- Improved terminal scrolling: deeper scrollback (10,000 lines) and keyboard navigation (PageUp/PageDown, Ctrl+Home/End). A global handler ensures shortcuts work on the active tab even when focus is elsewhere.
+- Theme system with live preview and per-project persistence: Dark, Light, Deep Blue, Light Grey, End Times.
+- Settings modal with form-based editor for `.user` (no JSON required) including Python venv rules and templates.
+- Root-level `TODO.md` with an in-app Todo panel (sections, reorder, delete, Save/Reload, live sync while open).
 
 
 ## What This App Does
@@ -53,21 +56,63 @@ SuperCLI is an Electron desktop app that manages multiple AI coding CLIs (Claude
    - `run.bat` (Windows) or `npm start` elsewhere launches the Electron app with DevTools already open.  
    - Remember we're actively using SuperCLI to build this project; launching the app gives you the environment you'll keep iterating inside.
 
-3. **Project structure basics**
+3. **Settings**  
+   - Use the `Settings` button in the header to view/edit the active project's `.user` preferences.  
+   - The modal provides fields (form UI). Advanced mode exposes raw JSON if needed. `Save` writes to `<project>/.user`. `Reload` re-reads from disk/home-fallback.
+
+4. **Project structure basics**
    - `main.js`: Electron main process, PTY management, file IO.
    - `renderer.js`: all tab logic, clipboard handling, XTerm wiring.
    - `styles.css`: dark theme styling.
    - `install.bat` / `run.bat`: Windows convenience scripts.
 
-4. **Current TODOs**
+5. **Current TODOs**
    - Detect when @lydell/node-pty fails to download and surface a repair button/CTA.
    - Improve UX for fallback mode (focus external window, onboarding overlay, better error copy).
    - Add session persistence and window-position management.
    - Flesh out next-level features (command history, project templates, CLI presets).
 
-5. **Troubleshooting quick hits**
+6. **Troubleshooting quick hits**
    - Embedded terminal missing → rerun `npm install`, ensure Spectre libs are installed, and check firewall/proxy for blocked downloads.
    - External window stuck minimized → PowerShell sometimes spawns off-screen; use Alt+Tab or Task View to bring it forward.
    - Input box not closing commands → make sure the tab is in "embedded" mode (status text is green). Fallback tabs intentionally only log the text.
 
 With those notes, you should be able to continue development, add new CLIs, or start polishing the installer/UX without reverse engineering the history. Good luck!
+
+## TODO.md
+- SuperCLI looks for `TODO.md` (or `todo.md`) in the project root and renders checkbox tasks in the Todo panel.
+- Format: Markdown checkbox list items using `- [ ] Task` and `- [x] Task`.
+- The Todo panel can add items, toggle completion, Save back to `TODO.md`, or Reload from disk.
+- On first selecting a project, SuperCLI creates a starter `TODO.md` with usage instructions if missing.
+
+## Changelog
+- See `CHANGELOG.md` for version history. Current version: 1.1.0.
+
+## User Preferences (.user)
+- Place a JSON file named `.user` in the project root to store per-project preferences. A home-level fallback at `~/.supercli.user` is also read; project values take precedence.
+- Loaded on project selection and available via IPC (`load-user-preferences`).
+- Example fields include session/UI defaults and language-specific rules.
+
+Example `.user` snippet for Python venv policy:
+
+```
+{
+  "version": 1,
+  "language_prefs": {
+    "python": {
+      "venv": {
+        "auto_enable_when_dependency_count_gte": 2,
+        "venv_dir": ".venv",
+        "python_executable": "python",
+        "use_requirements_txt": true
+      },
+      "scripts": {
+        "install_bat": "...bat template...",
+        "run_bat": "...bat template..."
+      }
+    }
+  }
+}
+```
+
+Intended behavior: when creating Python apps with ≥2 dependencies, use a venv in `.venv` and scaffold `install.bat`/`run.bat` using the provided templates. Hook-up to generation flows can be added next.

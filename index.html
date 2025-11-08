@@ -60,12 +60,33 @@
       </div>
       <div class="project-info">
         <span class="project-path" id="projectPath">No project selected</span>
+        <button class="project-btn" id="todoBtn" title="Show/Hide TODO">Todo</button>
+        <button class="project-btn" id="settingsBtn" title="Settings">Settings</button>
         <button class="debug-btn" id="debugBtn" title="Open DevTools">Debug Tools</button>
       </div>
     </div>
 
     <!-- Terminal display area -->
     <div class="terminal-container" id="terminalContainer"></div>
+
+    <!-- Todo side panel -->
+    <div class="todo-panel" id="todoPanel">
+      <div class="todo-header">
+        <span class="todo-title">Project TODO</span>
+        <button class="todo-close" id="todoCloseBtn" title="Close">×</button>
+      </div>
+      <div class="todo-body">
+        <div id="todoEmptyState" class="todo-empty">No items yet. Add one below.</div>
+        <div id="todoList" class="todo-list"></div>
+      </div>
+      <div class="todo-footer">
+        <input id="todoAddSection" class="todo-input" type="text" placeholder="section (optional)" />
+        <input id="todoAddInput" class="todo-input" type="text" placeholder="Add a new todo" />
+        <button id="todoReloadBtn" class="todo-add-btn" title="Reload from disk">Reload</button>
+        <button id="todoSaveBtn" class="todo-add-btn" title="Save to TODO.md">Save</button>
+        <button id="todoAddBtn" class="todo-add-btn">Add</button>
+      </div>
+    </div>
 
     <!-- Input area at bottom -->
     <div class="input-container">
@@ -80,6 +101,89 @@
       </div>
       <div class="input-info">
         <span id="inputInfo">Ready</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal" id="settingsModal">
+    <div class="modal-content settings">
+      <h2>Settings</h2>
+      <p class="modal-subtitle">Project .user preferences and rules</p>
+      <div class="settings-meta">
+        <span>Active project: </span><span id="settingsProjectName">None</span>
+      </div>
+      <div class="settings-section">
+        <h3 class="settings-subhead">General</h3>
+        <div class="settings-grid">
+          <label for="profileName">Profile name</label>
+          <input id="profileName" class="settings-input" type="text" placeholder="Your name" />
+
+          <label for="profileNotes">Notes</label>
+          <input id="profileNotes" class="settings-input" type="text" placeholder="Notes about this project" />
+
+          <label>Restore session on launch</label>
+          <input id="restoreOnLaunch" type="checkbox" class="settings-checkbox" />
+
+          <label>Remember window bounds</label>
+          <input id="rememberWindowBounds" type="checkbox" class="settings-checkbox" />
+
+          <label for="themeSelect">Theme</label>
+          <select id="themeSelect" class="settings-select">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="deep-blue">Deep Blue</option>
+            <option value="light-grey">Light Grey</option>
+            <option value="end-times">End Times</option>
+          </select>
+
+          <label for="fontSize">Font size</label>
+          <input id="fontSize" class="settings-input" type="number" min="8" max="28" step="1" />
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3 class="settings-subhead">Python</h3>
+        <div class="settings-grid">
+          <label for="pyDepThreshold">Auto-venv when deps ≥</label>
+          <input id="pyDepThreshold" class="settings-input" type="number" min="0" step="1" />
+
+          <label for="pyVenvDir">Venv directory</label>
+          <input id="pyVenvDir" class="settings-input" type="text" placeholder=".venv" />
+
+          <label for="pyExe">Python executable</label>
+          <input id="pyExe" class="settings-input" type="text" placeholder="python" />
+
+          <label>Use requirements.txt</label>
+          <input id="pyUseReq" type="checkbox" class="settings-checkbox" />
+
+          <label for="pyEntrypoint">Entry point</label>
+          <input id="pyEntrypoint" class="settings-input" type="text" placeholder="main.py" />
+
+          <label>Include script templates</label>
+          <input id="pyIncludeTemplates" type="checkbox" class="settings-checkbox" />
+        </div>
+        <div class="settings-grid full">
+          <label for="pyInstallBat">install.bat template</label>
+          <textarea id="pyInstallBat" class="settings-textarea small" spellcheck="false"></textarea>
+
+          <label for="pyRunBat">run.bat template</label>
+          <textarea id="pyRunBat" class="settings-textarea small" spellcheck="false"></textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn" id="settingsGenDefaults">Fill default Python templates</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <label class="settings-label"><input type="checkbox" id="settingsShowJson" /> Advanced: show raw .user JSON</label>
+        <textarea id="settingsUserJson" class="settings-textarea" style="display:none" spellcheck="false" placeholder="{\n  \"version\": 1,\n  ...\n}"></textarea>
+        <p class="settings-hint">Project-level .user overrides home (~/.supercli.user). Save writes to project .user.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn modal-cancel" id="settingsReload">Reload</button>
+        <button class="modal-btn modal-confirm" id="settingsSave">Save</button>
+        <button class="modal-btn" id="settingsClose">Close</button>
       </div>
     </div>
   </div>

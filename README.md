@@ -1,129 +1,118 @@
 # SuperCLI
 
-A powerful Node.js-based terminal interface with dark mode, multi-tab support, and image paste functionality.
+An Electron desktop app that wrangles multiple AI coding CLIs in one place. Tabs per project, embedded terminals when available, project preferences, themes, and a Markdown‑backed TODO panel.
 
 ## Features
 
-- **Dark Mode UI**: Easy on the eyes with a professional dark theme
-- **Multi-Tab Support**: Open multiple terminal sessions simultaneously
-- **Multi-Project Workspace**: Project selector in the header; each project has its own tab set
-- **Embedded Terminals**: Optional PTY-powered terminals keep your CLIs inside SuperCLI with automatic fallback to external windows
-- **Deep Scrollback + Navigation**: 10,000-line scrollback with PageUp/PageDown and Ctrl+Home/End
-- **Image Paste**: Paste images directly into the input field - they're automatically saved to your project folder
-- **Project Management**: Organized folder structure with automatic temp and image directories
-- **Cross-Platform**: Works on Windows, macOS, and Linux
+- Multi‑project workspace with per‑project tabs and selector
+- Embedded terminals via `@lydell/node-pty` with external window fallback
+- Deep scrollback (10,000 lines) + global PageUp/PageDown, Ctrl+Home/End
+- Image paste to `.supercli/images` with auto‑inserted path
+- Settings modal with project `.user` preferences (form‑based editor)
+- Theme system: Dark, Light, Deep Blue, Light Grey, End Times (yellow/black)
+- Project TODO panel backed by `TODO.md` in the repo root
+  - Checkbox lists, optional sections (Markdown headings), reorder, delete
+  - Save/Reload and live sync if file changes on disk
+- Cross‑platform: Windows, macOS, Linux
 
 ## Installation
 
 1. Make sure you have Node.js installed (v16 or higher recommended)
 2. Clone or download this project
 3. Install dependencies:
-   ```bash
-   npm install
-   ```
+
+```
+npm install
+```
 
 ### Optional: Embedded terminal support
 
-`npm install` already pulls in **@lydell/node-pty**, which ships prebuilt binaries for every major platform. If that download is blocked (offline install, proxy restrictions, etc.), SuperCLI detects the missing PTY layer and automatically falls back to external PowerShell/Bash windows.
+`npm install` pulls in **@lydell/node-pty**, which ships prebuilt binaries. If that download is blocked (offline/proxy), SuperCLI detects the missing PTY layer and automatically falls back to external PowerShell/Bash windows.
 
-Only when the prebuilt package fails do you need extra tooling:
+If prebuilt binaries fail:
 
-1. Install the Visual Studio 2022 **Spectre-mitigated libs** (Visual Studio Installer -> Individual components -> search for *MSVC v143 Spectre-mitigated libs*).
-2. Re-run `npm install` so @lydell/node-pty and its platform-specific package can unpack.
-
-Until those binaries are present, SuperCLI will keep launching external windows and show a reminder in each tab.
+1. Install Visual Studio 2022 “MSVC v143 Spectre-mitigated libs” (Visual Studio Installer → Individual components)
+2. Re-run `npm install`
 
 ## Usage
 
 ### Starting the Application
 
-Run the application with:
-```bash
+```
 npm start
 ```
 
-For development mode with DevTools:
-```bash
+Development mode with DevTools:
+
+```
 npm run dev
 ```
 
 ### Using SuperCLI
 
-1. **Create or Open a Project**
+1. Create or Open a Project
    - Click "+" to add a tab and choose a CLI
-   - Check "New project" in the modal to pick a folder (or reuse the current active project)
-   - SuperCLI creates a `.supercli` folder with:
-     - `images/` - For pasted images
-     - `temp/` - For temporary files
-     - `project.json` - Project metadata
+   - Check "New project" in the modal to pick a folder (or reuse the active project)
+   - SuperCLI creates a `.supercli` folder (images/temp/metadata) and ensures a root `TODO.md` with usage instructions
 
-2. **Switch Projects**
-   - Use the selector at the left of the tabs to switch between projects
-   - Each project shows only its own terminal tabs
+2. Switch Projects
+   - Use the selector at the left of the tabs
 
-3. **Managing Tabs**
-   - Click the "+" button to create a new terminal tab in the active project
-   - Click on tabs to switch between terminals within that project
-   - Click the "×" on a tab to close it
+3. Using the Terminal
+   - With `@lydell/node-pty`, type directly in the terminal pane or in the input box and press Send
+   - Without PTY, SuperCLI launches a labelled external window per tab; use that window to interact while the in‑app pane logs status
+   - Shift+Enter inserts a newline; Enter sends
 
-3. **Using the Terminal**
-   - With `@lydell/node-pty` installed, each tab hosts a live shell (PowerShell on Windows, your default shell on macOS/Linux); type directly in the terminal pane or in the input box and press **Send**
-   - Without the PTY dependency, SuperCLI launches a labelled PowerShell/terminal window for each tab; use that window to interact while the in-app pane logs activity and reminders
-   - The input box supports multi-line commands with `Shift+Enter` and sends with `Enter`
+4. Pasting Images
+   - Select a project first
+   - Paste (Ctrl+V) into the input field; the image is saved to `.supercli/images` and the path is inserted
 
-4. **Pasting Images**
-   - First, select a project folder
-   - Copy an image to your clipboard
-   - Paste (`Ctrl+V`) into the input field
-   - The image path will be automatically inserted
-   - Images are saved to `.supercli/images/` in your project folder
+5. Settings
+   - Click `Settings` (header) to edit per‑project preferences via fields (no JSON needed)
+   - Theme selection applies immediately and persists per project
+
+6. TODO Panel
+   - Click `Todo` (header) to open/close
+   - Tasks live in root `TODO.md` as checkbox lines; optional “section” groups tasks under headings
+   - Save writes back to file; Reload re‑reads; when open, external edits sync live
 
 ## Keyboard Shortcuts
 
-- `Enter` - Send command to embedded terminal
-- `Shift+Enter` - New line in input field
-- `Ctrl+V` - Paste (supports both text and images)
-- `PageUp` / `PageDown` - Scroll a page in terminal
-- `Ctrl+Home` / `Ctrl+End` - Jump to top/bottom of terminal
+- Enter — Send to embedded terminal
+- Shift+Enter — New line in input
+- Ctrl+V — Paste (text or images)
+- PageUp/PageDown — Scroll a page in the active terminal (works globally)
+- Ctrl+Home/Ctrl+End — Jump to top/bottom of terminal
+- Alt+Up/Down — Move selected TODO up/down (when focused)
+- Delete — Delete selected TODO (when focused)
 
 ## Project Structure
 
 ```
 SuperCLI/
-├── main.js           # Electron main process
-├── preload.js        # Secure IPC bridge
-├── renderer.js       # Frontend logic
-├── index.html        # UI structure
-├── styles.css        # Dark mode styling
-├── package.json      # Dependencies
-└── README.md         # This file
+  main.js        # Electron main process, PTY + IPC, TODO watcher
+  preload.js     # (empty, reserved)
+  renderer.js    # Frontend logic (tabs, settings, todo, themes)
+  index.html     # UI layout
+  styles.css     # Themes and component styles
+  PROJECT.md     # Deeper project notes
+  README.md      # This file
 ```
 
 ## How It Works
 
-- **Electron**: Provides the desktop application framework
-- **XTerm.js**: Powers the terminal display
-- **Node.js child_process**: Handles shell command execution
-- **IPC**: Secure communication between main and renderer processes
+- Electron provides the desktop shell
+- XTerm.js renders terminal output
+- Node child_process/PTY handles shells; IPC connects renderer to main
 
-## Notes for MVP
+## Notes
 
-This is the initial MVP (Minimum Viable Product) version. Embedded PTY support is available when `@lydell/node-pty` is installed; otherwise SuperCLI relies on external windows. Future enhancements could include:
-
-- Shipping prebuilt PTY binaries so the embedded experience works out-of-the-box
-- Session persistence
-- Custom themes
-- Keyboard shortcuts customization
-- Multiple shell support (cmd, bash, zsh, etc.)
+- If `@lydell/node-pty` isn’t available, SuperCLI automatically uses external terminals with clear status text.
+- Session persistence and presets are planned.
 
 ## Troubleshooting
 
-- **Embedded terminal never appears**: Install the VS 2022 Spectre-mitigated libs and rerun `npm install` so `@lydell/node-pty` can download its binary. Until then SuperCLI uses external windows automatically.
-- **No terminal prompt showing**: Some shells suppress the prompt until the first command. Run `cls`/`clear` or press Enter once.
-- **Images not pasting**: Ensure you've selected a project folder first.
-- **Input field not working after command**: The input field should automatically focus after sending. If not, click on it.
-
-## License
-
-MIT
-
+- Embedded terminal missing: rerun `npm install`, verify VS 2022 Spectre libs, and ensure downloads aren’t blocked by proxy/firewall.
+- No terminal prompt: some shells suppress the prompt until first command; press Enter or run `cls`/`clear`.
+- Images not pasting: select a project; images save to `.supercli/images`.
+- Theme didn’t apply after switching projects: set theme via `Settings` (persists per project in `.user`).

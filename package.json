@@ -1,7 +1,7 @@
 {
   "name": "super-cli",
-  "version": "1.0.0",
-  "description": "A powerful terminal interface with image paste support and multi-tab management",
+  "version": "1.1.0",
+  "description": "Electron app for managing multiple AI coding CLIs with per-project tabs, embedded terminals, themes, settings, and a Markdown-backed TODO panel",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
