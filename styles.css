@@ -78,7 +78,8 @@ body.theme-light-grey .modal-confirm, body.theme-light-grey .project-btn, body.t
 body.theme-light-grey .modal-confirm:hover, body.theme-light-grey .project-btn:hover, body.theme-light-grey .send-btn:hover, body.theme-light-grey .debug-btn:hover { background-color: #1d5ea4; }
 
 /* End Times (Fallout yellow/black) */
-body.theme-end-times { background-color: #000000; color: #f5f543; }
+/* Use neutral body text like default; reserve yellow for accents */
+body.theme-end-times { background-color: #000000; color: #d4d4d4; }
 body.theme-end-times .header { background-color: #0a0a0a; border-bottom-color: #333333; }
 body.theme-end-times #projectSelector { background-color: #0a0a0a; color: #f5f543; border-color: #444444; }
 body.theme-end-times .tab { background-color: #0a0a0a; border-color: #333333; }
@@ -88,15 +89,21 @@ body.theme-end-times .new-tab-btn { background-color: #0a0a0a; border-color: #33
 body.theme-end-times .project-path { color: #c8c86b; }
 body.theme-end-times .terminal-container { background-color: #000000; }
 body.theme-end-times .input-container { background-color: #0a0a0a; border-top-color: #333333; }
-body.theme-end-times .input-field { background-color: #000000; color: #f5f543; border-color: #333333; }
+body.theme-end-times .input-field { background-color: #000000; color: #d4d4d4; border-color: #333333; }
 body.theme-end-times .modal-content { background-color: #0a0a0a; }
 body.theme-end-times .cli-option { background-color: #0a0a0a; border-color: #333333; }
 body.theme-end-times .cli-option.selected { background-color: #000000; border-color: #f5f543; }
-body.theme-end-times .custom-cli-input input { background-color: #000000; color: #f5f543; border-color: #333333; }
+/* Match default's hover emphasis but with yellow accent */
+body.theme-end-times .cli-option:hover { background-color: #111111; border-color: #b3a800; }
+/* Focus/selection accents in yellow instead of default blue */
+body.theme-end-times .custom-cli-input input:focus { outline: none; border-color: #b3a800; }
+body.theme-end-times .new-project-toggle input { accent-color: #b3a800; }
+body.theme-end-times .custom-cli-input input { background-color: #000000; color: #d4d4d4; border-color: #333333; }
 body.theme-end-times .new-project-toggle { background-color: #0a0a0a; border-color: #333333; }
 body.theme-end-times .modal-cancel { background-color: #333333; color: #f5f543; }
 body.theme-end-times .modal-confirm, body.theme-end-times .project-btn, body.theme-end-times .send-btn, body.theme-end-times .debug-btn { background-color: #b3a800; color: #000000; }
 body.theme-end-times .modal-confirm:hover, body.theme-end-times .project-btn:hover, body.theme-end-times .send-btn:hover, body.theme-end-times .debug-btn:hover { background-color: #d6ca00; color: #000000; }
+body.theme-end-times .modal-confirm:active, body.theme-end-times .project-btn:active, body.theme-end-times .send-btn:active, body.theme-end-times .debug-btn:active { background-color: #a39200; color: #000000; }
 
 /* Modal */
 .modal {
@@ -677,6 +684,9 @@ body.theme-end-times .todo-add-btn:hover { background-color: #d6ca00; color: #00
 body.theme-end-times .todo-btn { background-color: #1a1a1a; border-color: #333333; color: #f5f543; }
 body.theme-end-times .todo-btn:hover { background-color: #222222; }
 body.theme-end-times .todo-btn.danger { background-color: #6b2e2e; border-color: #8a3b3b; color: #f5f5f5; }
+/* Match default focus accents in TODO inputs/checkboxes but use yellow */
+body.theme-end-times .todo-input:focus { outline: none; border-color: #b3a800; }
+body.theme-end-times .todo-checkbox { accent-color: #b3a800; }
 
 .terminal-wrapper {
   display: none;

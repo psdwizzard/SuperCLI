@@ -202,6 +202,8 @@ let todoBtn, todoPanel, todoCloseBtn, todoList, todoAddInput, todoAddBtn, todoEm
 let profileNameInput, profileNotesInput, restoreOnLaunchChk, rememberWindowBoundsChk, themeSelectEl, fontSizeInput;
 // Settings form elements (Python)
 let pyDepThresholdInput, pyVenvDirInput, pyExeInput, pyUseReqChk, pyEntrypointInput, pyIncludeTemplatesChk, pyInstallBatText, pyRunBatText, settingsGenDefaultsBtn, settingsShowJsonChk;
+// Settings form elements (Backup)
+let backupEnabledChk, backupIntervalInput, backupRetentionInput, backupTargetDirInput, backupCompressChk;
 
 // Initialize
 async function init() {
@@ -253,6 +255,12 @@ async function init() {
     pyRunBatText = document.getElementById('pyRunBat');
     settingsGenDefaultsBtn = document.getElementById('settingsGenDefaults');
     settingsShowJsonChk = document.getElementById('settingsShowJson');
+    // Backup settings inputs
+    backupEnabledChk = document.getElementById('backupEnabled');
+    backupIntervalInput = document.getElementById('backupInterval');
+    backupRetentionInput = document.getElementById('backupRetention');
+    backupTargetDirInput = document.getElementById('backupTargetDir');
+    backupCompressChk = document.getElementById('backupCompress');
 
     // Modal elements
     cliModal = document.getElementById('cliModal');
@@ -490,17 +498,26 @@ function isEditableTarget(target) {
 }
 
 function handleGlobalTerminalScroll(event) {
-  // Avoid interfering with typing inside inputs/textareas
-  if (isEditableTarget(event.target)) {
+  const key = event.key || '';
+  const code = event.code || '';
+  const ctrlOrCmd = event.ctrlKey || event.metaKey;
+
+  // Determine if this keypress is one of our terminal scroll keys
+  const isScrollKey = (
+    code === 'PageUp' || key === 'PageUp' ||
+    code === 'PageDown' || key === 'PageDown' ||
+    ((code === 'Home' || key === 'Home') && ctrlOrCmd) ||
+    ((code === 'End' || key === 'End') && ctrlOrCmd)
+  );
+
+  // Allow terminal scrolling keys even when focus is in inputs/textareas
+  // For all other keys, don't interfere with editable elements
+  if (isEditableTarget(event.target) && !isScrollKey) {
     return;
   }
 
   const terminal = state.terminals.get(state.activeTerminalId);
   if (!terminal || !terminal.xterm) return;
-
-  const key = event.key || '';
-  const code = event.code || '';
-  const ctrlOrCmd = event.ctrlKey || event.metaKey;
 
   // Mirror per-instance shortcuts for consistency across tabs
   if (code === 'PageUp' || key === 'PageUp') {
@@ -954,10 +971,21 @@ async function reloadSettingsFromDisk() {
 
 async function saveSettingsToDisk() {
   if (!state.activeProjectPath) return;
-  // Build preferences from form fields
-  const prefs = buildPreferencesFromForm();
-  // Keep JSON textarea in sync (for advanced view)
-  settingsUserJson.value = JSON.stringify(prefs, null, 2);
+  // Decide source of truth: advanced raw JSON when visible/checked, else form
+  let prefs;
+  if (settingsShowJsonChk?.checked) {
+    try {
+      prefs = JSON.parse(settingsUserJson.value || '{}');
+    } catch (e) {
+      inputInfo.textContent = 'Invalid JSON in advanced view';
+      inputInfo.style.color = '#f48771';
+      return;
+    }
+  } else {
+    prefs = buildPreferencesFromForm();
+    // Keep JSON textarea in sync (for advanced view)
+    settingsUserJson.value = JSON.stringify(prefs, null, 2);
+  }
 
   const res = await window.electronAPI.saveUserPreferences(state.activeProjectPath, prefs);
   if (res?.success) {
@@ -1055,7 +1083,8 @@ function getXtermTheme(themeName) {
   if (name === 'end-times') {
     return {
       background: '#000000',
-      foreground: '#f5f543',
+      // Use neutral foreground like default; keep cursor yellow for emphasis
+      foreground: '#d4d4d4',
       cursor: '#f5f543',
       black: '#000000',
       red: '#c8b400',
@@ -1137,6 +1166,13 @@ function populateSettingsForm(prefs) {
   pyRunBatText.value = scripts.run_bat || defaults.run_bat
     .replaceAll('{{VENV_DIR}}', pyVenvDirInput.value || '.venv')
     .replaceAll('{{ENTRYPOINT}}', pyEntrypointInput.value || 'main.py');
+
+  const backup = prefs?.backup || {};
+  backupEnabledChk.checked = Boolean(backup.enabled);
+  backupIntervalInput.value = backup.interval_minutes != null ? backup.interval_minutes : 60;
+  backupRetentionInput.value = backup.retention_count != null ? backup.retention_count : 4;
+  backupTargetDirInput.value = backup.target_dir || '.supercli/backups';
+  backupCompressChk.checked = Boolean(backup.compress);
 }
 
 function buildPreferencesFromForm() {
@@ -1175,6 +1211,14 @@ function buildPreferencesFromForm() {
       run_bat: pyRunBatText.value || getDefaultPythonTemplates().run_bat
     };
   }
+
+  prefs.backup = {
+    enabled: Boolean(backupEnabledChk.checked),
+    interval_minutes: Number(backupIntervalInput.value || 60),
+    retention_count: Number(backupRetentionInput.value || 4),
+    target_dir: backupTargetDirInput.value || '.supercli/backups',
+    compress: Boolean(backupCompressChk.checked)
+  };
 
   return prefs;
 }

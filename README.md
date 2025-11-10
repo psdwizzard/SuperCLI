@@ -15,6 +15,25 @@ An Electron desktop app that wrangles multiple AI coding CLIs in one place. Tabs
   - Save/Reload and live sync if file changes on disk
 - Cross‑platform: Windows, macOS, Linux
 
+### Optional: Automatic Backups
+
+- Enable via `.user` under a `backup` key. Defaults target `.supercli/**` and `TODO.md`, writing snapshots to `.supercli/backups`.
+- Minimal example:
+
+```
+{
+  "backup": {
+    "enabled": true,
+    "interval_minutes": 60,
+    "retention_count": 4,
+    "target_dir": ".supercli/backups"
+  }
+}
+```
+
+- Options: `compress` (uses PowerShell Compress-Archive on Windows or `zip` on *nix), `include_globs`, `exclude_globs`, `verify`, `schedule: "daily@HH:MM"`, `max_backup_size_mb`, `on_success_cmd`, `on_error_cmd`.
+- Oldest snapshots beyond `retention_count` are removed after a successful backup.
+
 ## Installation
 
 1. Make sure you have Node.js installed (v16 or higher recommended)

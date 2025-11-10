@@ -4,6 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
 let pty = null;
+// Track backup timers per project
+const backupSchedulers = new Map();
 
 try {
   pty = require('@lydell/node-pty');
@@ -127,6 +129,283 @@ function createProjectStructure(projectPath) {
   };
 }
 
+// -------- Backup feature (PROJECT.md: .user.backup) --------
+function getBackupConfig(preferences = {}, projectPath) {
+  const backup = preferences?.backup || {};
+  const targetDir = backup.target_dir || path.join('.supercli', 'backups');
+  // Always exclude the backup folder itself to avoid recursion
+  const excludeDefaults = [
+    '.supercli/backups/**'
+  ];
+  const include = Array.isArray(backup.include_globs) && backup.include_globs.length > 0
+    ? backup.include_globs
+    : ['.supercli/**', 'TODO.md'];
+  const exclude = Array.isArray(backup.exclude_globs) && backup.exclude_globs.length > 0
+    ? Array.from(new Set([...backup.exclude_globs, ...excludeDefaults]))
+    : excludeDefaults;
+  return {
+    enabled: Boolean(backup.enabled),
+    interval_minutes: Number(backup.interval_minutes || 60),
+    retention_count: Number(backup.retention_count || 4),
+    target_dir: targetDir,
+    compress: Boolean(backup.compress),
+    include_globs: include,
+    exclude_globs: exclude,
+    verify: Boolean(backup.verify),
+    schedule: backup.schedule || null,
+    max_backup_size_mb: backup.max_backup_size_mb ? Number(backup.max_backup_size_mb) : null,
+    pause_on_battery: Boolean(backup.pause_on_battery),
+    on_success_cmd: backup.on_success_cmd || '',
+    on_error_cmd: backup.on_error_cmd || ''
+  };
+}
+
+function normalizeToForwardSlashes(p) {
+  return String(p).replace(/\\/g, '/');
+}
+
+function listFilesForBackup(projectPath, includeGlobs, excludeGlobs) {
+  const results = [];
+  const excludes = (excludeGlobs || []).map(g => normalizeToForwardSlashes(g));
+
+  function isExcluded(relPath) {
+    const rel = normalizeToForwardSlashes(relPath);
+    // Directory wildcard exclude like ".supercli/backups/**"
+    for (const pat of excludes) {
+      if (pat.endsWith('/**')) {
+        const dir = pat.slice(0, -3); // remove /**
+        if (rel.startsWith(dir.endsWith('/') ? dir : dir + '/')) return true;
+      } else if (pat.includes('*')) {
+        // Basic star matching within the same segment
+        const re = new RegExp('^' + pat.split('*').map(s => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+        if (re.test(rel)) return true;
+      } else {
+        if (rel === pat) return true;
+      }
+    }
+    return false;
+  }
+
+  function addIfFile(absPath) {
+    try {
+      const st = fs.statSync(absPath);
+      if (!st.isFile()) return;
+      const rel = normalizeToForwardSlashes(path.relative(projectPath, absPath));
+      if (!isExcluded(rel)) results.push({ abs: absPath, rel, size: st.size });
+    } catch (_) { /* ignore */ }
+  }
+
+  function walkDir(absDir) {
+    let entries = [];
+    try { entries = fs.readdirSync(absDir, { withFileTypes: true }); } catch (_) { return; }
+    for (const ent of entries) {
+      const abs = path.join(absDir, ent.name);
+      if (ent.isDirectory()) {
+        walkDir(abs);
+      } else if (ent.isFile()) {
+        addIfFile(abs);
+      }
+    }
+  }
+
+  for (const inc of includeGlobs || []) {
+    if (!inc) continue;
+    // Handle patterns like ".supercli/**"
+    if (inc.endsWith('/**')) {
+      const dirRel = inc.slice(0, -3); // remove /**
+      const dirAbs = path.join(projectPath, dirRel);
+      if (fs.existsSync(dirAbs)) walkDir(dirAbs);
+      continue;
+    }
+    // Exact file
+    const abs = path.join(projectPath, inc);
+    if (fs.existsSync(abs)) {
+      const st = fs.statSync(abs);
+      if (st.isDirectory()) {
+        walkDir(abs);
+      } else if (st.isFile()) {
+        addIfFile(abs);
+      }
+    }
+  }
+  return results;
+}
+
+function ensureDir(p) {
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+}
+
+function timestampString(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const y = date.getFullYear();
+  const m = pad(date.getMonth() + 1);
+  const d = pad(date.getDate());
+  const hh = pad(date.getHours());
+  const mm = pad(date.getMinutes());
+  const ss = pad(date.getSeconds());
+  return `${y}${m}${d}-${hh}${mm}${ss}`;
+}
+
+function runShellCommand(cmd, args, options) {
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { ...options, stdio: 'ignore' });
+    child.on('error', (err) => resolve({ success: false, error: err.message }));
+    child.on('exit', (code) => resolve({ success: code === 0, code }));
+    try { child.unref?.(); } catch (_) {}
+  });
+}
+
+async function compressFolderToZip(folderPath, zipPath) {
+  const isWin = os.platform() === 'win32';
+  if (isWin) {
+    // Use PowerShell Compress-Archive
+    const ps = process.env.SystemRoot ? path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') : 'powershell.exe';
+    const script = `Compress-Archive -Path \"${folderPath}/*\" -DestinationPath \"${zipPath}\" -Force`;
+    return await runShellCommand(ps, ['-NoLogo', '-NoProfile', '-Command', script]);
+  }
+  // Try zip -r on *nix
+  return await runShellCommand('zip', ['-r', zipPath, path.basename(folderPath)], { cwd: path.dirname(folderPath) });
+}
+
+async function performBackup(projectPath, preferences) {
+  const cfg = getBackupConfig(preferences, projectPath);
+  if (!cfg.enabled) return { skipped: true };
+  try {
+    const files = listFilesForBackup(projectPath, cfg.include_globs, cfg.exclude_globs);
+    const totalSize = files.reduce((a, f) => a + (f.size || 0), 0);
+    if (cfg.max_backup_size_mb && totalSize > cfg.max_backup_size_mb * 1024 * 1024) {
+      throw new Error(`Backup size ${Math.round(totalSize/1024/1024)}MB exceeds cap ${cfg.max_backup_size_mb}MB`);
+    }
+
+    const destBase = path.isAbsolute(cfg.target_dir) ? cfg.target_dir : path.join(projectPath, cfg.target_dir);
+    ensureDir(destBase);
+    const stamp = timestampString();
+    const snapshotDir = path.join(destBase, stamp);
+
+    ensureDir(snapshotDir);
+    // Copy
+    for (const f of files) {
+      const target = path.join(snapshotDir, f.rel);
+      ensureDir(path.dirname(target));
+      try {
+        fs.copyFileSync(f.abs, target);
+      } catch (e) {
+        // Best-effort; continue others
+      }
+    }
+
+    // Optional verify (size only)
+    if (cfg.verify) {
+      for (const f of files) {
+        const target = path.join(snapshotDir, f.rel);
+        try {
+          const st = fs.statSync(target);
+          if (st.size !== f.size) {
+            throw new Error(`Verify failed for ${f.rel} (expected ${f.size}, got ${st.size})`);
+          }
+        } catch (e) {
+          throw new Error(`Verify failed for ${f.rel}`);
+        }
+      }
+    }
+
+    let finalPath = snapshotDir;
+    if (cfg.compress) {
+      const zipPath = path.join(destBase, `${stamp}.zip`);
+      const res = await compressFolderToZip(snapshotDir, zipPath);
+      if (res.success) {
+        // Remove folder after compression
+        try {
+          fs.rmSync(snapshotDir, { recursive: true, force: true });
+        } catch (_) {}
+        finalPath = zipPath;
+      } else {
+        // Leave folder if compression failed
+        finalPath = snapshotDir;
+      }
+    }
+
+    // Retention: keep last N by name sort (timestamp prefixes)
+    try {
+      const entries = fs.readdirSync(destBase).map(name => ({ name, full: path.join(destBase, name) }))
+        .filter(e => e.name.match(/^\d{8}-\d{6}(\.zip)?$/));
+      entries.sort((a, b) => a.name.localeCompare(b.name));
+      const keep = Math.max(0, cfg.retention_count);
+      const toDelete = entries.slice(0, Math.max(0, entries.length - keep));
+      for (const e of toDelete) {
+        try { fs.rmSync(e.full, { recursive: true, force: true }); } catch (_) {}
+      }
+    } catch (_) {}
+
+    // Optional hooks
+    if (cfg.on_success_cmd) {
+      try { spawn(cfg.on_success_cmd, { shell: true, stdio: 'ignore', detached: true }); } catch (_) {}
+    }
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-data', 'system', `\x1b[32m[backup]\x1b[0m Snapshot created at ${finalPath}\r\n`);
+    }
+    return { success: true, path: finalPath };
+  } catch (error) {
+    if (preferences?.backup?.on_error_cmd) {
+      try { spawn(preferences.backup.on_error_cmd, { shell: true, stdio: 'ignore', detached: true }); } catch (_) {}
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('terminal-data', 'system', `\x1b[31m[backup-error]\x1b[0m ${error.message}\r\n`);
+    }
+    return { success: false, error: error.message };
+  }
+}
+
+function scheduleDaily(timeStr, fn) {
+  // timeStr: HH:MM 24h
+  const [hh, mm] = (timeStr || '02:00').split(':').map(n => parseInt(n, 10));
+  const now = new Date();
+  const next = new Date();
+  next.setHours(hh || 2, mm || 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  const delay = next - now;
+  const timeout = setTimeout(async function tick() {
+    try { await fn(); } catch (_) {}
+    // schedule next 24h
+    sched.timeout = setTimeout(tick, 24 * 60 * 60 * 1000);
+  }, delay);
+  const sched = { timeout };
+  return sched;
+}
+
+function startBackupScheduler(projectPath, preferences) {
+  // Clear previous
+  stopBackupScheduler(projectPath);
+  const cfg = getBackupConfig(preferences, projectPath);
+  if (!cfg.enabled) return;
+
+  // Ensure base directory exists early
+  const destBase = path.isAbsolute(cfg.target_dir) ? cfg.target_dir : path.join(projectPath, cfg.target_dir);
+  try { ensureDir(destBase); } catch (_) {}
+
+  let sched = null;
+  if (cfg.schedule && /^daily@\d{2}:\d{2}$/.test(cfg.schedule)) {
+    const t = cfg.schedule.split('@')[1];
+    sched = scheduleDaily(t, () => performBackup(projectPath, preferences));
+  } else {
+    const ms = Math.max(1, cfg.interval_minutes || 60) * 60 * 1000;
+    const interval = setInterval(() => { performBackup(projectPath, preferences); }, ms);
+    // Optional: do first backup on scheduler start
+    setTimeout(() => { performBackup(projectPath, preferences); }, 2000);
+    sched = { interval };
+  }
+  backupSchedulers.set(projectPath, sched);
+}
+
+function stopBackupScheduler(projectPath) {
+  const sched = backupSchedulers.get(projectPath);
+  if (!sched) return;
+  if (sched.interval) clearInterval(sched.interval);
+  if (sched.timeout) clearTimeout(sched.timeout);
+  backupSchedulers.delete(projectPath);
+}
+
 // Handle project folder selection
 ipcMain.handle('select-project-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -137,6 +416,7 @@ ipcMain.handle('select-project-folder', async () => {
     const projectPath = result.filePaths[0];
     const structure = createProjectStructure(projectPath);
     const userPrefs = loadUserPreferences(projectPath);
+    try { startBackupScheduler(projectPath, userPrefs); } catch (_) {}
     return { projectPath, ...structure, userPrefs };
   }
 
@@ -341,6 +621,8 @@ ipcMain.handle('save-user-preferences', async (event, projectPath, preferences) 
     }
 
     fs.writeFileSync(targetPath, JSON.stringify(prefsObject, null, 2), 'utf8');
+    // Restart backup scheduler with new preferences if backup block changed/exists
+    try { startBackupScheduler(projectPath, prefsObject); } catch (_) {}
     return { success: true, path: targetPath };
   } catch (error) {
     return { success: false, error: error.message };
@@ -680,6 +962,12 @@ app.on('window-all-closed', () => {
     try { watcher.close(); } catch (_) {}
   });
   todoWatchers.clear();
+
+  // Clean up backup schedulers
+  backupSchedulers.forEach((sched, proj) => {
+    try { if (sched.interval) clearInterval(sched.interval); if (sched.timeout) clearTimeout(sched.timeout); } catch (_) {}
+  });
+  backupSchedulers.clear();
 
   if (process.platform !== 'darwin') {
     app.quit();

@@ -176,6 +176,27 @@
       </div>
 
       <div class="settings-section">
+        <h3 class="settings-subhead">Backup</h3>
+        <div class="settings-grid">
+          <label>Enable automatic backups</label>
+          <input id="backupEnabled" type="checkbox" class="settings-checkbox" />
+
+          <label for="backupInterval">Backup interval (minutes)</label>
+          <input id="backupInterval" class="settings-input" type="number" min="1" step="1" placeholder="60" />
+
+          <label for="backupRetention">Keep last N backups</label>
+          <input id="backupRetention" class="settings-input" type="number" min="1" step="1" placeholder="4" />
+
+          <label for="backupTargetDir">Backup directory</label>
+          <input id="backupTargetDir" class="settings-input" type="text" placeholder=".supercli/backups" />
+
+          <label>Compress backups (ZIP)</label>
+          <input id="backupCompress" type="checkbox" class="settings-checkbox" />
+        </div>
+        <p class="settings-hint">Backups include .supercli/** and TODO.md by default. Files are timestamped and rotated based on retention count.</p>
+      </div>
+
+      <div class="settings-section">
         <label class="settings-label"><input type="checkbox" id="settingsShowJson" /> Advanced: show raw .user JSON</label>
         <textarea id="settingsUserJson" class="settings-textarea" style="display:none" spellcheck="false" placeholder="{\n  \"version\": 1,\n  ...\n}"></textarea>
         <p class="settings-hint">Project-level .user overrides home (~/.supercli.user). Save writes to project .user.</p>

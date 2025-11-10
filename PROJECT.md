@@ -73,9 +73,9 @@ SuperCLI is an Electron desktop app that manages multiple AI coding CLIs (Claude
    - Flesh out next-level features (command history, project templates, CLI presets).
 
 6. **Troubleshooting quick hits**
-   - Embedded terminal missing → rerun `npm install`, ensure Spectre libs are installed, and check firewall/proxy for blocked downloads.
-   - External window stuck minimized → PowerShell sometimes spawns off-screen; use Alt+Tab or Task View to bring it forward.
-   - Input box not closing commands → make sure the tab is in "embedded" mode (status text is green). Fallback tabs intentionally only log the text.
+   - Embedded terminal missing �+' rerun `npm install`, ensure Spectre libs are installed, and check firewall/proxy for blocked downloads.
+   - External window stuck minimized �+' PowerShell sometimes spawns off-screen; use Alt+Tab or Task View to bring it forward.
+   - Input box not closing commands �+' make sure the tab is in "embedded" mode (status text is green). Fallback tabs intentionally only log the text.
 
 With those notes, you should be able to continue development, add new CLIs, or start polishing the installer/UX without reverse engineering the history. Good luck!
 
@@ -115,4 +115,51 @@ Example `.user` snippet for Python venv policy:
 }
 ```
 
-Intended behavior: when creating Python apps with ≥2 dependencies, use a venv in `.venv` and scaffold `install.bat`/`run.bat` using the provided templates. Hook-up to generation flows can be added next.
+Intended behavior: when creating Python apps with �%�2 dependencies, use a venv in `.venv` and scaffold `install.bat`/`run.bat` using the provided templates. Hook-up to generation flows can be added next.
+
+### Backup Settings (`.user.backup`)
+
+Add an optional backup feature that periodically snapshots key project files and rotates old backups.
+
+Scope and defaults:
+- Targets: `.supercli/**` (images/temp/metadata) and `TODO.md` by default.
+- Destination: `.supercli/backups/` inside the project unless overridden.
+- Format: timestamped directories; optional ZIP compression.
+
+Minimal fields (recommended):
+
+```
+{
+  "backup": {
+    "enabled": true,
+    "interval_minutes": 60,            // how often to back up
+    "retention_count": 4,              // keep last N backups
+    "target_dir": ".supercli/backups" // where backups are stored
+  }
+}
+```
+
+Optional fields (nice-to-have):
+
+```
+{
+  "backup": {
+    "compress": true,                          // zip each snapshot
+    "include_globs": [".supercli/**", "TODO.md"],
+    "exclude_globs": [".supercli/backups/**"],
+    "verify": true,                            // checksum verify after write
+    "schedule": "daily@02:00",                // alternative to interval; forms: interval or daily@HH:MM
+    "max_backup_size_mb": 1024,                // safety cap per backup
+    "pause_on_battery": true,                  // skip when on battery (laptops)
+    "on_success_cmd": "",                     // hook after backup completes
+    "on_error_cmd": ""                        // hook on failure
+  }
+}
+```
+
+Behavior notes:
+- If `schedule` is present, it takes precedence over `interval_minutes`.
+- `retention_count` applies after each successful backup; the oldest snapshots beyond the count are deleted.
+- `include_globs`/`exclude_globs` are resolved relative to the project root; defaults will avoid recursive backup of the backup folder itself.
+- Restores are manual initially (browse `target_dir`, unzip if compressed, copy files back). A UI restore flow can be added later.
+
