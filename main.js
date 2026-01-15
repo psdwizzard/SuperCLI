@@ -6,6 +6,7 @@ const { spawn } = require('child_process');
 let pty = null;
 // Track backup timers per project
 const backupSchedulers = new Map();
+const explorerIgnoreNames = new Set(['.git', '.supercli', 'node_modules']);
 
 try {
   pty = require('@lydell/node-pty');
@@ -59,6 +60,58 @@ function escapePowerShellSingleQuotes(value = '') {
 
 function escapePosixSingleQuotes(value = '') {
   return String(value).replace(/'/g, `'"'"'`);
+}
+
+function buildProjectTree(rootPath, options, depth, stats) {
+  if (depth > options.maxDepth || stats.count >= options.maxEntries) {
+    if (stats.count >= options.maxEntries) stats.truncated = true;
+    return [];
+  }
+
+  let entries;
+  try {
+    entries = fs.readdirSync(rootPath, { withFileTypes: true });
+  } catch (error) {
+    return [];
+  }
+
+  entries.sort((a, b) => {
+    if (a.isDirectory() && !b.isDirectory()) return -1;
+    if (!a.isDirectory() && b.isDirectory()) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const nodes = [];
+
+  for (const entry of entries) {
+    if (stats.count >= options.maxEntries) {
+      stats.truncated = true;
+      break;
+    }
+
+    const name = entry.name;
+    if (explorerIgnoreNames.has(name)) {
+      continue;
+    }
+
+    const fullPath = path.join(rootPath, name);
+    const isDir = entry.isDirectory();
+    const node = {
+      name,
+      path: fullPath,
+      type: isDir ? 'dir' : 'file'
+    };
+
+    stats.count += 1;
+
+    if (isDir) {
+      node.children = buildProjectTree(fullPath, options, depth + 1, stats);
+    }
+
+    nodes.push(node);
+  }
+
+  return nodes;
 }
 
 function createWindow() {
@@ -423,6 +476,33 @@ ipcMain.handle('select-project-folder', async () => {
   return null;
 });
 
+ipcMain.handle('read-project-tree', async (event, projectPath, options = {}) => {
+  try {
+    if (!projectPath) {
+      return { success: false, error: 'Missing project path' };
+    }
+    if (!fs.existsSync(projectPath)) {
+      return { success: false, error: 'Project path does not exist' };
+    }
+
+    const config = {
+      maxDepth: Number(options.maxDepth ?? 5),
+      maxEntries: Number(options.maxEntries ?? 1500)
+    };
+
+    const stats = { count: 0, truncated: false };
+    const tree = buildProjectTree(projectPath, config, 0, stats);
+    return {
+      success: true,
+      tree,
+      nodeCount: stats.count,
+      truncated: stats.truncated
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 // Expose an explicit loader for preferences
 ipcMain.handle('load-user-preferences', async (event, projectPath) => {
   try {
@@ -630,13 +710,13 @@ ipcMain.handle('save-user-preferences', async (event, projectPath, preferences) 
 });
 
 // Create a new terminal session (embedded when @lydell/node-pty is available)
-ipcMain.handle('create-terminal', (event, id, cwd, cliCommand) => {
+ipcMain.handle('create-terminal', (event, id, cwd, cliCommand, cliLabel) => {
   console.log(`Creating terminal ${id} with CLI: ${cliCommand} in ${cwd}`);
 
   try {
     if (pty) {
       try {
-        return createEmbeddedTerminal(id, cwd, cliCommand);
+        return createEmbeddedTerminal(id, cwd, cliCommand, cliLabel);
       } catch (embeddedError) {
         console.error('Embedded terminal failed, falling back to external window:', embeddedError);
 
@@ -649,14 +729,14 @@ ipcMain.handle('create-terminal', (event, id, cwd, cliCommand) => {
       }
     }
 
-    return createExternalTerminal(id, cwd, cliCommand);
+    return createExternalTerminal(id, cwd, cliCommand, cliLabel);
   } catch (error) {
     console.error('Error creating terminal:', error);
     return { success: false, error: error.message };
   }
 });
 
-function createEmbeddedTerminal(id, cwd, cliCommand) {
+function createEmbeddedTerminal(id, cwd, cliCommand, cliLabelOverride) {
   if (!pty) {
     throw new Error('@lydell/node-pty is not installed');
   }
@@ -704,7 +784,9 @@ function createEmbeddedTerminal(id, cwd, cliCommand) {
   }
 
   const initCommands = [];
-  const cliLabel = cliCommand && cliCommand.trim().length > 0 ? cliCommand : 'shell';
+  const cliLabel = cliLabelOverride && String(cliLabelOverride).trim().length > 0
+    ? cliLabelOverride
+    : (cliCommand && cliCommand.trim().length > 0 ? cliCommand : 'shell');
 
   if (isWindows) {
     initCommands.push(`Set-Location -LiteralPath '${escapePowerShellSingleQuotes(cwd)}'`);
@@ -724,8 +806,10 @@ function createEmbeddedTerminal(id, cwd, cliCommand) {
   return { success: true, mode: 'embedded' };
 }
 
-function createExternalTerminal(id, cwd, cliCommand) {
-  const cliLabel = cliCommand && cliCommand.trim().length > 0 ? cliCommand : 'shell';
+function createExternalTerminal(id, cwd, cliCommand, cliLabelOverride) {
+  const cliLabel = cliLabelOverride && String(cliLabelOverride).trim().length > 0
+    ? cliLabelOverride
+    : (cliCommand && cliCommand.trim().length > 0 ? cliCommand : 'shell');
 
   if (os.platform() === 'win32') {
     const safeCwd = escapePowerShellSingleQuotes(cwd);

@@ -34,6 +34,14 @@ body.theme-light .new-project-toggle { background-color: #f7f7f7; border-color: 
 body.theme-light .modal-cancel { background-color: #e0e0e0; color: #1e1e1e; }
 body.theme-light .modal-confirm, body.theme-light .project-btn, body.theme-light .send-btn, body.theme-light .debug-btn { background-color: #2472c8; }
 body.theme-light .modal-confirm:hover, body.theme-light .project-btn:hover, body.theme-light .send-btn:hover, body.theme-light .debug-btn:hover { background-color: #1d5ea4; }
+body.theme-light .explorer-panel { background-color: #f7f7f7; border-right-color: #dddddd; }
+body.theme-light .explorer-header { border-bottom-color: #dddddd; color: #666666; }
+body.theme-light .explorer-item { color: #1e1e1e; }
+body.theme-light .explorer-item:hover { background-color: #ebebeb; }
+body.theme-light .explorer-btn { background-color: #e0e0e0; border-color: #cccccc; color: #1e1e1e; }
+body.theme-light .explorer-btn:hover { background-color: #d5d5d5; }
+body.theme-light .explorer-run { background-color: #2472c8; }
+body.theme-light .explorer-run:hover { background-color: #1d5ea4; }
 
 /* Deep Blue */
 body.theme-deep-blue { background-color: #0e1b2e; color: #d7e7ff; }
@@ -55,6 +63,14 @@ body.theme-deep-blue .new-project-toggle { background-color: #0b1a2b; border-col
 body.theme-deep-blue .modal-cancel { background-color: #1c3d66; color: #d7e7ff; }
 body.theme-deep-blue .modal-confirm, body.theme-deep-blue .project-btn, body.theme-deep-blue .send-btn, body.theme-deep-blue .debug-btn { background-color: #3b8eea; }
 body.theme-deep-blue .modal-confirm:hover, body.theme-deep-blue .project-btn:hover, body.theme-deep-blue .send-btn:hover, body.theme-deep-blue .debug-btn:hover { background-color: #2e6fba; }
+body.theme-deep-blue .explorer-panel { background-color: #0b1a2b; border-right-color: #1c3d66; }
+body.theme-deep-blue .explorer-header { border-bottom-color: #1c3d66; color: #9fb7d1; }
+body.theme-deep-blue .explorer-item { color: #d7e7ff; }
+body.theme-deep-blue .explorer-item:hover { background-color: #132842; }
+body.theme-deep-blue .explorer-btn { background-color: #143055; border-color: #1c3d66; color: #d7e7ff; }
+body.theme-deep-blue .explorer-btn:hover { background-color: #173865; }
+body.theme-deep-blue .explorer-run { background-color: #3b8eea; }
+body.theme-deep-blue .explorer-run:hover { background-color: #2e6fba; }
 
 /* Light Grey */
 body.theme-light-grey { background-color: #f5f5f5; color: #333333; }
@@ -76,6 +92,14 @@ body.theme-light-grey .new-project-toggle { background-color: #f0f0f0; border-co
 body.theme-light-grey .modal-cancel { background-color: #dddddd; color: #333333; }
 body.theme-light-grey .modal-confirm, body.theme-light-grey .project-btn, body.theme-light-grey .send-btn, body.theme-light-grey .debug-btn { background-color: #2472c8; }
 body.theme-light-grey .modal-confirm:hover, body.theme-light-grey .project-btn:hover, body.theme-light-grey .send-btn:hover, body.theme-light-grey .debug-btn:hover { background-color: #1d5ea4; }
+body.theme-light-grey .explorer-panel { background-color: #f2f2f2; border-right-color: #d0d0d0; }
+body.theme-light-grey .explorer-header { border-bottom-color: #d0d0d0; color: #666666; }
+body.theme-light-grey .explorer-item { color: #333333; }
+body.theme-light-grey .explorer-item:hover { background-color: #e6e6e6; }
+body.theme-light-grey .explorer-btn { background-color: #e0e0e0; border-color: #cccccc; color: #333333; }
+body.theme-light-grey .explorer-btn:hover { background-color: #d5d5d5; }
+body.theme-light-grey .explorer-run { background-color: #2472c8; }
+body.theme-light-grey .explorer-run:hover { background-color: #1d5ea4; }
 
 /* End Times (Fallout yellow/black) */
 /* Use neutral body text like default; reserve yellow for accents */
@@ -104,6 +128,14 @@ body.theme-end-times .modal-cancel { background-color: #333333; color: #f5f543; 
 body.theme-end-times .modal-confirm, body.theme-end-times .project-btn, body.theme-end-times .send-btn, body.theme-end-times .debug-btn { background-color: #b3a800; color: #000000; }
 body.theme-end-times .modal-confirm:hover, body.theme-end-times .project-btn:hover, body.theme-end-times .send-btn:hover, body.theme-end-times .debug-btn:hover { background-color: #d6ca00; color: #000000; }
 body.theme-end-times .modal-confirm:active, body.theme-end-times .project-btn:active, body.theme-end-times .send-btn:active, body.theme-end-times .debug-btn:active { background-color: #a39200; color: #000000; }
+body.theme-end-times .explorer-panel { background-color: #0a0a0a; border-right-color: #333333; }
+body.theme-end-times .explorer-header { border-bottom-color: #333333; color: #c8c86b; }
+body.theme-end-times .explorer-item { color: #f5f543; }
+body.theme-end-times .explorer-item:hover { background-color: #111111; }
+body.theme-end-times .explorer-btn { background-color: #333333; border-color: #444444; color: #f5f543; }
+body.theme-end-times .explorer-btn:hover { background-color: #3b3b3b; }
+body.theme-end-times .explorer-run { background-color: #b3a800; color: #000000; }
+body.theme-end-times .explorer-run:hover { background-color: #d6ca00; color: #000000; }
 
 /* Modal */
 .modal {
@@ -368,6 +400,147 @@ body.theme-end-times .modal-confirm:active, body.theme-end-times .project-btn:ac
   height: 100vh;
 }
 
+/* Workspace layout */
+.workspace {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.explorer-panel {
+  width: clamp(210px, 18vw, 280px);
+  background-color: #252525;
+  border-right: 1px solid #3e3e3e;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+
+.explorer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #3e3e3e;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #b6b6b6;
+}
+
+.explorer-title {
+  font-weight: 600;
+}
+
+.explorer-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: #777777;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.explorer-btn {
+  background-color: #3e3e3e;
+  border: 1px solid #555;
+  color: #d4d4d4;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.explorer-btn:hover {
+  background-color: #4e4e4e;
+}
+
+.explorer-body {
+  overflow: auto;
+  padding: 6px 0 10px 0;
+  flex: 1;
+}
+
+.explorer-empty {
+  color: #858585;
+  font-size: 12px;
+  padding: 8px 12px;
+}
+
+.explorer-tree {
+  display: flex;
+  flex-direction: column;
+}
+
+.explorer-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #d4d4d4;
+  cursor: pointer;
+  user-select: none;
+}
+
+.explorer-item:hover {
+  background-color: #2f2f2f;
+}
+
+.explorer-item.file {
+  padding-right: 6px;
+}
+
+.explorer-item .explorer-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explorer-item .explorer-ext {
+  color: #8c8c8c;
+  font-size: 11px;
+}
+
+.explorer-toggle {
+  width: 18px;
+  height: 18px;
+  border: 1px solid transparent;
+  background: none;
+  color: #bdbdbd;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.explorer-toggle:hover {
+  background-color: #3e3e3e;
+  border-color: #555;
+}
+
+.explorer-children {
+  display: none;
+  flex-direction: column;
+}
+
+.explorer-children.expanded {
+  display: flex;
+}
+
+.explorer-run {
+  background-color: #005a9e;
+  border: none;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.explorer-run:hover {
+  background-color: #004578;
+}
+
 /* Header and Tabs */
 .header {
   background-color: #2d2d2d;
@@ -524,6 +697,7 @@ body.theme-end-times .modal-confirm:active, body.theme-end-times .project-btn:ac
 /* Terminal Container */
 .terminal-container {
   flex: 1;
+  min-width: 0;
   background-color: #1e1e1e;
   overflow: hidden;
   position: relative;

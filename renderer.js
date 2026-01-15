@@ -22,7 +22,7 @@ window.electronAPI = {
   saveTodo: (projectPath, items) => ipcRenderer.invoke('save-todo', projectPath, items),
   watchTodo: (projectPath) => ipcRenderer.invoke('watch-todo', projectPath),
   unwatchTodo: (projectPath) => ipcRenderer.invoke('unwatch-todo', projectPath),
-  createTerminal: (id, cwd, cliCommand) => ipcRenderer.invoke('create-terminal', id, cwd, cliCommand),
+  createTerminal: (id, cwd, cliCommand, cliLabel) => ipcRenderer.invoke('create-terminal', id, cwd, cliCommand, cliLabel),
   writeToTerminal: (id, data) => ipcRenderer.invoke('write-to-terminal', id, data),
   resizeTerminal: (id, cols, rows) => ipcRenderer.invoke('resize-terminal', id, cols, rows),
   closeTerminal: (id) => ipcRenderer.invoke('close-terminal', id),
@@ -33,7 +33,8 @@ window.electronAPI = {
   onTerminalExit: (callback) => {
     ipcRenderer.on('terminal-exit', (event, id) => callback(id));
   },
-  saveImage: (projectPath, imageData) => ipcRenderer.invoke('save-image', projectPath, imageData)
+  saveImage: (projectPath, imageData) => ipcRenderer.invoke('save-image', projectPath, imageData),
+  readProjectTree: (projectPath, options) => ipcRenderer.invoke('read-project-tree', projectPath, options)
 };
 
 // External TODO updates
@@ -83,6 +84,7 @@ function setActiveProject(projectPath) {
   }
   updateProjectSelector();
   refreshTabsForActiveProject();
+  loadExplorerTree();
   // Apply theme from project preferences (if available)
   try {
     const prefs = state.userPrefsByProject.get(projectPath);
@@ -109,6 +111,147 @@ function updateProjectSelector() {
     projectSelector.appendChild(el);
   });
   projectSelector.disabled = options.length <= 1;
+}
+
+function formatCliLabel(cliCommand) {
+  if (!cliCommand || !cliCommand.trim()) return 'Shell';
+  const trimmed = cliCommand.trim();
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+function getTerminalLabel(terminal) {
+  if (!terminal) return 'Shell';
+  return terminal.displayLabel || terminal.cliCommand || 'Shell';
+}
+
+async function loadExplorerTree() {
+  if (!explorerTree || !explorerEmpty) return;
+
+  if (!state.activeProjectPath) {
+    explorerTree.innerHTML = '';
+    explorerEmpty.textContent = 'Select a project to see files.';
+    explorerEmpty.style.display = 'block';
+    if (explorerMeta) explorerMeta.textContent = '';
+    return;
+  }
+
+  explorerTree.innerHTML = '';
+  explorerEmpty.textContent = 'Loading...';
+  explorerEmpty.style.display = 'block';
+  if (explorerMeta) explorerMeta.textContent = '';
+
+  const result = await window.electronAPI.readProjectTree(state.activeProjectPath, {
+    maxDepth: 6,
+    maxEntries: 2000
+  });
+
+  if (!result || !result.success) {
+    explorerEmpty.textContent = result?.error || 'Unable to load files';
+    return;
+  }
+
+  renderExplorerNodes(result.tree || [], explorerTree, 0);
+  explorerEmpty.style.display = (result.tree && result.tree.length > 0) ? 'none' : 'block';
+  if (explorerMeta) {
+    let meta = `${result.nodeCount || 0} items`;
+    if (result.truncated) meta += ' (truncated)';
+    explorerMeta.textContent = meta;
+  }
+}
+
+function renderExplorerNodes(nodes, container, depth) {
+  nodes.forEach((node) => {
+    const row = document.createElement('div');
+    row.className = `explorer-item ${node.type}`;
+    row.style.paddingLeft = `${10 + depth * 12}px`;
+
+    if (node.type === 'dir') {
+      const toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'explorer-toggle';
+
+      const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+      const isExpanded = depth < 1;
+      toggle.textContent = hasChildren ? (isExpanded ? '-' : '+') : '';
+      toggle.disabled = !hasChildren;
+
+      const name = document.createElement('span');
+      name.className = 'explorer-name';
+      name.textContent = node.name;
+
+      row.appendChild(toggle);
+      row.appendChild(name);
+      container.appendChild(row);
+
+      const children = document.createElement('div');
+      children.className = 'explorer-children';
+      if (hasChildren && isExpanded) {
+        children.classList.add('expanded');
+      }
+      container.appendChild(children);
+
+      if (hasChildren) {
+        renderExplorerNodes(node.children, children, depth + 1);
+      }
+
+      const toggleFolder = () => {
+        if (!hasChildren) return;
+        const willExpand = !children.classList.contains('expanded');
+        children.classList.toggle('expanded', willExpand);
+        toggle.textContent = willExpand ? '-' : '+';
+      };
+
+      toggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        toggleFolder();
+      });
+      row.addEventListener('click', () => {
+        toggleFolder();
+      });
+    } else {
+      const name = document.createElement('span');
+      name.className = 'explorer-name';
+      name.textContent = node.name;
+      row.appendChild(name);
+
+      const isBat = /\.bat$/i.test(node.name || '');
+      if (isBat) {
+        const runBtn = document.createElement('button');
+        runBtn.type = 'button';
+        runBtn.className = 'explorer-run';
+        runBtn.textContent = 'Run';
+        runBtn.addEventListener('click', (event) => {
+          event.stopPropagation();
+          runBatFile(node.path);
+        });
+        row.appendChild(runBtn);
+        row.addEventListener('dblclick', () => {
+          runBatFile(node.path);
+        });
+      }
+
+      container.appendChild(row);
+    }
+  });
+}
+
+function runBatFile(filePath) {
+  if (!filePath) return;
+  if (!state.activeProjectPath) {
+    inputInfo.textContent = 'Select a project before running a file';
+    inputInfo.style.color = '#f48771';
+    return;
+  }
+  if (process.platform !== 'win32') {
+    inputInfo.textContent = 'BAT files can only run on Windows terminals';
+    inputInfo.style.color = '#f48771';
+    return;
+  }
+
+  const label = path.basename(filePath);
+  const escapedPath = String(filePath).replace(/\"/g, '\"\"');
+  const command = `& \"${escapedPath}\"`;
+  createNewTerminal(command, label);
 }
 
 function setupTerminalClipboardShortcuts(xterm, terminalId) {
@@ -194,6 +337,7 @@ function setupTerminalClipboardShortcuts(xterm, terminalId) {
 // DOM elements
 let tabsContainer, terminalContainer, newTabBtn, debugBtn;
 let projectPathElement, inputField, sendBtn, inputInfo;
+let explorerPanel, explorerTree, explorerEmpty, explorerRefreshBtn, explorerMeta;
 let projectSelector;
 let cliModal, cliOptions, customCliInput, customCliCommand, modalCancel, modalConfirm, newProjectCheckbox;
 let settingsBtn, settingsModal, settingsProjectName, settingsUserJson, settingsSave, settingsClose, settingsReload;
@@ -220,6 +364,11 @@ async function init() {
     inputField = document.getElementById('inputField');
     sendBtn = document.getElementById('sendBtn');
     inputInfo = document.getElementById('inputInfo');
+    explorerPanel = document.getElementById('explorerPanel');
+    explorerTree = document.getElementById('explorerTree');
+    explorerEmpty = document.getElementById('explorerEmpty');
+    explorerRefreshBtn = document.getElementById('explorerRefreshBtn');
+    explorerMeta = document.getElementById('explorerMeta');
     settingsBtn = document.getElementById('settingsBtn');
     todoBtn = document.getElementById('todoBtn');
     settingsModal = document.getElementById('settingsModal');
@@ -365,6 +514,11 @@ function setupEventListeners() {
       if (newPath && newPath !== state.activeProjectPath) {
         setActiveProject(newPath);
       }
+    });
+  }
+  if (explorerRefreshBtn) {
+    explorerRefreshBtn.addEventListener('click', () => {
+      loadExplorerTree();
     });
   }
 
@@ -692,7 +846,7 @@ async function selectProjectFolder() {
 }
 
 // Create new terminal
-async function createNewTerminal(cliCommand) {
+async function createNewTerminal(cliCommand, displayLabel = null) {
   console.log('createNewTerminal called with CLI:', cliCommand);
 
   if (!Terminal || !FitAddon) {
@@ -736,7 +890,7 @@ async function createNewTerminal(cliCommand) {
   setupTerminalClipboardShortcuts(xterm, id);
 
   // Create backend terminal with CLI command
-  const creationResult = await window.electronAPI.createTerminal(id, cwd, cliCommand);
+  const creationResult = await window.electronAPI.createTerminal(id, cwd, cliCommand, displayLabel);
 
   if (!creationResult || !creationResult.success) {
     console.error('Failed to create terminal', creationResult?.error);
@@ -781,8 +935,10 @@ async function createNewTerminal(cliCommand) {
     wrapper,
     resizeObserver,
     cliCommand,
+    displayLabel: displayLabel || formatCliLabel(cliCommand),
     mode: terminalMode,
-    projectPath: state.activeProjectPath || null
+    projectPath: state.activeProjectPath || null,
+    hasSentCommand: false
   });
 
   // Create tab with CLI name (filtered per active project)
@@ -791,7 +947,7 @@ async function createNewTerminal(cliCommand) {
     if (!proj.tabIds.includes(id)) proj.tabIds.push(id);
     refreshTabsForActiveProject();
   } else {
-    createTab(id, cliCommand);
+    createTab(id, cliCommand, displayLabel || formatCliLabel(cliCommand));
   }
 
   // Activate this terminal
@@ -1224,7 +1380,7 @@ function buildPreferencesFromForm() {
 }
 
 // Create tab
-function createTab(id, cliCommand) {
+function createTab(id, cliCommand, displayLabel) {
   const tab = document.createElement('div');
   tab.className = 'tab';
   tab.dataset.terminalId = id;
@@ -1233,7 +1389,7 @@ function createTab(id, cliCommand) {
   label.className = 'tab-label';
 
   // Format CLI name for display
-  const cliName = cliCommand.charAt(0).toUpperCase() + cliCommand.slice(1);
+  const cliName = displayLabel || formatCliLabel(cliCommand);
   label.textContent = cliName;
 
   const closeBtn = document.createElement('button');
@@ -1259,7 +1415,7 @@ function refreshTabsForActiveProject() {
   const tabIds = proj?.tabIds || [];
   tabIds.forEach(tid => {
     const t = state.terminals.get(tid);
-    if (t) createTab(tid, t.cliCommand);
+    if (t) createTab(tid, t.cliCommand, t.displayLabel);
   });
 
   // Ensure an active terminal belongs to the active project
@@ -1318,7 +1474,7 @@ function updateInputInfoForTerminal(terminal) {
     return;
   }
 
-  const cliLabel = terminal.cliCommand || 'shell';
+  const cliLabel = getTerminalLabel(terminal);
 
   if (terminal.mode === 'embedded') {
     inputInfo.textContent = `Connected to ${cliLabel}. Type below or click the terminal pane to interact.`;
@@ -1372,10 +1528,6 @@ async function closeTerminal(id) {
 
 // Send command
 function sendCommand() {
-  const command = inputField.value.trim();
-
-  if (!command) return;
-
   if (!state.activeTerminalId) {
     inputInfo.textContent = 'No active terminal';
     inputInfo.style.color = '#f48771';
@@ -1383,38 +1535,67 @@ function sendCommand() {
   }
 
   const terminal = state.terminals.get(state.activeTerminalId);
-  if (terminal) {
-    console.log('Sending command:', command);
+  if (!terminal) {
+    inputInfo.textContent = 'No active terminal';
+    inputInfo.style.color = '#f48771';
+    return;
+  }
 
-    // Write command to terminal
-    const isEmbedded = terminal.mode === 'embedded';
+  const command = inputField.value.trim();
+  const cliLabel = getTerminalLabel(terminal);
 
-    window.electronAPI.writeToTerminal(
-      state.activeTerminalId,
-      `${command}\r`
-    );
-
+  if (!command) {
+    if (!terminal.hasSentCommand) return;
+    window.electronAPI.writeToTerminal(state.activeTerminalId, '\r');
     if (terminal.mode === 'embedded') {
-      inputInfo.textContent = 'Command sent to embedded terminal';
+      inputInfo.textContent = 'Enter sent to embedded terminal';
       inputInfo.style.color = '#4ec9b0';
       setTimeout(() => {
         updateInputInfoForTerminal(terminal);
-      }, 2500);
+      }, 2000);
     } else {
-      inputInfo.textContent = `Command logged — run it inside the external ${terminal.cliCommand} window`;
+      inputInfo.textContent = `Enter logged - press it inside the external ${cliLabel} window`;
       inputInfo.style.color = '#f9c97a';
       setTimeout(() => {
         updateInputInfoForTerminal(terminal);
-      }, 4000);
+      }, 3000);
     }
-
-    // Clear input
-    inputField.value = '';
-    inputField.style.height = 'auto';
-
-    // Keep focus on input field so user can type next command
     inputField.focus();
+    return;
   }
+
+  console.log('Sending command:', command);
+
+  // Write command to terminal
+  const isEmbedded = terminal.mode === 'embedded';
+
+  window.electronAPI.writeToTerminal(
+    state.activeTerminalId,
+    `${command}\r`
+  );
+
+  if (terminal.mode === 'embedded') {
+    inputInfo.textContent = 'Command sent to embedded terminal';
+    inputInfo.style.color = '#4ec9b0';
+    setTimeout(() => {
+      updateInputInfoForTerminal(terminal);
+    }, 2500);
+  } else {
+    inputInfo.textContent = `Command logged - run it inside the external ${cliLabel} window`;
+    inputInfo.style.color = '#f9c97a';
+    setTimeout(() => {
+      updateInputInfoForTerminal(terminal);
+    }, 4000);
+  }
+
+  terminal.hasSentCommand = true;
+
+  // Clear input
+  inputField.value = '';
+  inputField.style.height = 'auto';
+
+  // Keep focus on input field so user can type next command
+  inputField.focus();
 }
 
 // Initialize app when DOM is ready
