@@ -58,7 +58,8 @@ const state = {
   terminals: new Map(),
   activeTerminalId: null,
   terminalCounter: 0,
-  selectedCli: null
+  selectedCli: null,
+  numberedListMode: false
 };
 
 function ensureProject(projectPath) {
@@ -336,7 +337,7 @@ function setupTerminalClipboardShortcuts(xterm, terminalId) {
 
 // DOM elements
 let tabsContainer, terminalContainer, newTabBtn, debugBtn;
-let projectPathElement, inputField, sendBtn, inputInfo;
+let projectPathElement, inputField, sendBtn, inputInfo, numberedListBtn;
 let explorerPanel, explorerTree, explorerEmpty, explorerRefreshBtn, explorerMeta;
 let projectSelector;
 let cliModal, cliOptions, customCliInput, customCliCommand, modalCancel, modalConfirm, newProjectCheckbox;
@@ -364,6 +365,7 @@ async function init() {
     inputField = document.getElementById('inputField');
     sendBtn = document.getElementById('sendBtn');
     inputInfo = document.getElementById('inputInfo');
+    numberedListBtn = document.getElementById('numberedListBtn');
     explorerPanel = document.getElementById('explorerPanel');
     explorerTree = document.getElementById('explorerTree');
     explorerEmpty = document.getElementById('explorerEmpty');
@@ -443,6 +445,9 @@ function setupEventListeners() {
 
   if (settingsBtn) {
     settingsBtn.addEventListener('click', openSettingsModal);
+  }
+  if (numberedListBtn) {
+    numberedListBtn.addEventListener('click', toggleNumberedListMode);
   }
   if (todoBtn) {
     todoBtn.addEventListener('click', toggleTodoPanel);
@@ -635,12 +640,88 @@ function handleInputFieldKeyDown(e) {
 
   e.preventDefault();
 
+  if (state.numberedListMode) {
+    insertNumberedListLine();
+    return;
+  }
+
   // Some keyboard layouts insert the newline before preventDefault fires; trim it back just in case
   if (inputField && /\r?\n$/.test(inputField.value)) {
     inputField.value = inputField.value.replace(/\r?\n$/, '');
   }
 
   sendCommand();
+}
+
+function toggleNumberedListMode() {
+  setNumberedListMode(!state.numberedListMode);
+  inputField?.focus();
+}
+
+function setNumberedListMode(enabled) {
+  state.numberedListMode = Boolean(enabled);
+  if (numberedListBtn) {
+    numberedListBtn.classList.toggle('active', state.numberedListMode);
+  }
+  if (state.numberedListMode) {
+    seedNumberedListAtCursor();
+  }
+}
+
+function seedNumberedListAtCursor() {
+  if (!inputField) return;
+  const value = inputField.value || '';
+  const start = inputField.selectionStart ?? value.length;
+  const { lineText } = getLineAtPosition(value, start);
+  if (/^\s*\d+\.\s/.test(lineText)) {
+    return;
+  }
+
+  const nextIndex = getNextNumberedListIndex(value, start);
+  const trimmedLine = lineText.trim();
+  const insertText = trimmedLine.length === 0 ? `${nextIndex}. ` : `\n${nextIndex}. `;
+  const newValue = value.slice(0, start) + insertText + value.slice(start);
+  inputField.value = newValue;
+  const newPos = start + insertText.length;
+  inputField.setSelectionRange(newPos, newPos);
+  inputField.dispatchEvent(new Event('input'));
+}
+
+function insertNumberedListLine() {
+  if (!inputField) return;
+  const value = inputField.value || '';
+  const start = inputField.selectionStart ?? value.length;
+  const end = inputField.selectionEnd ?? start;
+  const nextIndex = getNextNumberedListIndex(value, start);
+  const insertText = `\n${nextIndex}. `;
+  const newValue = value.slice(0, start) + insertText + value.slice(end);
+  inputField.value = newValue;
+  const newPos = start + insertText.length;
+  inputField.setSelectionRange(newPos, newPos);
+  inputField.dispatchEvent(new Event('input'));
+}
+
+function getNextNumberedListIndex(text, position) {
+  const before = text.slice(0, position);
+  const lines = before.split(/\r?\n/);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const match = lines[i].match(/^\s*(\d+)\.\s/);
+    if (match) {
+      return Number(match[1]) + 1;
+    }
+  }
+  return 1;
+}
+
+function getLineAtPosition(text, position) {
+  const start = text.lastIndexOf('\n', Math.max(0, position - 1)) + 1;
+  const end = text.indexOf('\n', position);
+  const lineEnd = end === -1 ? text.length : end;
+  return {
+    start,
+    end: lineEnd,
+    lineText: text.slice(start, lineEnd)
+  };
 }
 
 function isEditableTarget(target) {

@@ -76,8 +76,19 @@ function buildProjectTree(rootPath, options, depth, stats) {
   }
 
   entries.sort((a, b) => {
-    if (a.isDirectory() && !b.isDirectory()) return -1;
-    if (!a.isDirectory() && b.isDirectory()) return 1;
+    const aDir = a.isDirectory();
+    const bDir = b.isDirectory();
+    const aName = a.name.toLowerCase();
+    const bName = b.name.toLowerCase();
+    const aBat = !aDir && aName.endsWith('.bat');
+    const bBat = !bDir && bName.endsWith('.bat');
+    const aMd = !aDir && aName.endsWith('.md');
+    const bMd = !bDir && bName.endsWith('.md');
+
+    const aRank = aBat ? 0 : aDir ? 1 : aMd ? 2 : 3;
+    const bRank = bBat ? 0 : bDir ? 1 : bMd ? 2 : 3;
+    if (aRank !== bRank) return aRank - bRank;
+
     return a.name.localeCompare(b.name);
   });
 
