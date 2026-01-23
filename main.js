@@ -7,6 +7,8 @@ let pty = null;
 // Track backup timers per project
 const backupSchedulers = new Map();
 const explorerIgnoreNames = new Set(['.git', '.supercli', 'node_modules']);
+const startupProjectPath = resolveStartupProjectPath();
+let startupProjectInfo = null;
 
 try {
   pty = require('@lydell/node-pty');
@@ -140,6 +142,56 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 }
 
+function resolveStartupProjectPath() {
+  const args = process.argv.slice(1);
+  let explicit = null;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--project' || arg === '-p') {
+      explicit = args[i + 1];
+      break;
+    }
+    if (arg && arg.startsWith('--project=')) {
+      explicit = arg.split('=').slice(1).join('=');
+      break;
+    }
+  }
+
+  const envProject = process.env.SUPERCLI_PROJECT;
+  const candidates = [];
+  if (explicit) candidates.push(explicit);
+  if (envProject) candidates.push(envProject);
+
+  if (!explicit) {
+    let appPath = null;
+    try {
+      appPath = app.getAppPath();
+    } catch (_) {
+      appPath = null;
+    }
+    const appPathResolved = appPath ? path.resolve(appPath) : null;
+
+    for (const arg of args) {
+      if (!arg || arg.startsWith('-')) continue;
+      if (arg === '.') continue;
+      const abs = path.resolve(arg);
+      if (appPathResolved && abs === appPathResolved) continue;
+      candidates.push(arg);
+    }
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const abs = path.resolve(candidate);
+      if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) {
+        return abs;
+      }
+    } catch (_) { /* ignore */ }
+  }
+  return null;
+}
+
 // Create project folder structure
 function createProjectStructure(projectPath) {
   const tempDir = path.join(projectPath, '.supercli', 'temp');
@@ -191,6 +243,24 @@ function createProjectStructure(projectPath) {
     imagesDir,
     metadataPath
   };
+}
+
+function openProjectPath(projectPath) {
+  if (!projectPath) return null;
+  let absPath = projectPath;
+  try {
+    absPath = path.resolve(projectPath);
+    if (!fs.existsSync(absPath) || !fs.statSync(absPath).isDirectory()) {
+      return null;
+    }
+  } catch (_) {
+    return null;
+  }
+
+  const structure = createProjectStructure(absPath);
+  const userPrefs = loadUserPreferences(absPath);
+  try { startBackupScheduler(absPath, userPrefs); } catch (_) {}
+  return { projectPath: absPath, ...structure, userPrefs };
 }
 
 // -------- Backup feature (PROJECT.md: .user.backup) --------
@@ -477,14 +547,18 @@ ipcMain.handle('select-project-folder', async () => {
   });
 
   if (!result.canceled && result.filePaths.length > 0) {
-    const projectPath = result.filePaths[0];
-    const structure = createProjectStructure(projectPath);
-    const userPrefs = loadUserPreferences(projectPath);
-    try { startBackupScheduler(projectPath, userPrefs); } catch (_) {}
-    return { projectPath, ...structure, userPrefs };
+    return openProjectPath(result.filePaths[0]);
   }
 
   return null;
+});
+
+ipcMain.handle('get-startup-project', async () => {
+  if (!startupProjectPath) return null;
+  if (!startupProjectInfo) {
+    startupProjectInfo = openProjectPath(startupProjectPath);
+  }
+  return startupProjectInfo;
 });
 
 ipcMain.handle('read-project-tree', async (event, projectPath, options = {}) => {

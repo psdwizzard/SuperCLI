@@ -33,6 +33,7 @@ window.electronAPI = {
   onTerminalExit: (callback) => {
     ipcRenderer.on('terminal-exit', (event, id) => callback(id));
   },
+  getStartupProject: () => ipcRenderer.invoke('get-startup-project'),
   saveImage: (projectPath, imageData) => ipcRenderer.invoke('save-image', projectPath, imageData),
   readProjectTree: (projectPath, options) => ipcRenderer.invoke('read-project-tree', projectPath, options)
 };
@@ -426,6 +427,15 @@ async function init() {
 
     setupEventListeners();
     setupTerminalListeners();
+
+    const startup = await window.electronAPI.getStartupProject();
+    if (startup && startup.projectPath) {
+      state.projectInfo = startup;
+      if (startup.userPrefs) {
+        state.userPrefsByProject.set(startup.projectPath, startup.userPrefs);
+      }
+      setActiveProject(startup.projectPath);
+    }
 
     // Show modal to create first CLI tab
     console.log('Showing CLI selection modal...');

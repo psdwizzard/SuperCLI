@@ -67,6 +67,26 @@ Development mode with DevTools:
 npm run dev
 ```
 
+### Command-line Launch (Windows)
+
+To open SuperCLI in the folder you are currently in:
+
+```
+supercli
+```
+
+To open a specific folder:
+
+```
+supercli C:\path\to\project
+```
+
+Setup:
+
+1. Keep `supercli.bat` in this repo root (already included).
+2. Add this repo folder to your PATH so `supercli` is available anywhere.
+3. Run `install.bat` once so dependencies are ready.
+
 ### Using SuperCLI
 
 1. Create or Open a Project
