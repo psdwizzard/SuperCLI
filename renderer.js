@@ -1251,7 +1251,7 @@ async function saveSettingsToDisk() {
 }
 
 // Theme management
-const THEME_CLASSNAMES = ['theme-dark','theme-light','theme-deep-blue','theme-light-grey','theme-end-times'];
+const THEME_CLASSNAMES = ['theme-dark','theme-light','theme-deep-blue','theme-light-grey','theme-end-times','theme-matrix'];
 
 function applyTheme(themeName) {
   const body = document.body;
@@ -1262,6 +1262,7 @@ function applyTheme(themeName) {
     case 'deep-blue': cls = 'theme-deep-blue'; break;
     case 'light-grey': cls = 'theme-light-grey'; break;
     case 'end-times': cls = 'theme-end-times'; break;
+    case 'matrix': cls = 'theme-matrix'; break;
     default: cls = 'theme-dark';
   }
   // Remove any previous theme classes
@@ -1349,6 +1350,29 @@ function getXtermTheme(themeName) {
       brightMagenta: '#ffff99',
       brightCyan: '#ffff66',
       brightWhite: '#ffffaa'
+    };
+  }
+  if (name === 'matrix') {
+    return {
+      background: '#050a05',
+      foreground: '#f6fff6',
+      cursor: '#0cfd00',
+      black: '#050a05',
+      red: '#7bff9a',
+      green: '#0cfd00',
+      yellow: '#d6ffad',
+      blue: '#4cff9a',
+      magenta: '#7bffba',
+      cyan: '#55ffd8',
+      white: '#f6fff6',
+      brightBlack: '#1f3b1f',
+      brightRed: '#aaffc8',
+      brightGreen: '#6bff9a',
+      brightYellow: '#eaffc8',
+      brightBlue: '#8bffd0',
+      brightMagenta: '#b3ffe0',
+      brightCyan: '#8dffef',
+      brightWhite: '#ffffff'
     };
   }
   // Default dark
