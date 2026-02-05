@@ -891,6 +891,17 @@ body.theme-matrix .modal-btn {
   margin-top: 10px;
 }
 
+.todo-gh-controls {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+
+.todo-gh-controls .todo-input {
+  min-width: 0;
+}
+
 .todo-item { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 4px; min-width: 0; }
 
 .todo-item.done .todo-text { text-decoration: line-through; color: #858585; }
@@ -904,6 +915,18 @@ body.theme-matrix .modal-btn {
 .todo-btn:hover { background-color: #4e4e4e; }
 .todo-btn.danger { background-color: #6b2e2e; border-color: #8a3b3b; }
 .todo-btn.danger:hover { background-color: #8a3b3b; }
+
+.gh-issue-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.gh-issue-meta {
+  font-size: 11px;
+  color: #858585;
+}
 
 .todo-footer {
   display: grid;
@@ -953,6 +976,7 @@ body.theme-light .todo-header { border-bottom-color: #dddddd; }
 body.theme-light .todo-title, body.theme-light .todo-text { color: #1e1e1e; }
 body.theme-light .todo-input { background-color: #ffffff; color: #1e1e1e; border-color: #cccccc; }
 body.theme-light .todo-empty { color: #666666; }
+body.theme-light .gh-issue-meta { color: #666666; }
 body.theme-light .todo-add-btn { background-color: #2472c8; color: #ffffff; }
 body.theme-light .todo-add-btn:hover { background-color: #1d5ea4; }
 body.theme-light .todo-btn { background-color: #e0e0e0; border-color: #cccccc; color: #1e1e1e; }
@@ -964,6 +988,7 @@ body.theme-deep-blue .todo-header { border-bottom-color: #1c3d66; }
 body.theme-deep-blue .todo-title, body.theme-deep-blue .todo-text { color: #d7e7ff; }
 body.theme-deep-blue .todo-input { background-color: #0b1626; color: #d7e7ff; border-color: #1c3d66; }
 body.theme-deep-blue .todo-empty { color: #9fb7d1; }
+body.theme-deep-blue .gh-issue-meta { color: #9fb7d1; }
 body.theme-deep-blue .todo-add-btn { background-color: #3b8eea; color: #ffffff; }
 body.theme-deep-blue .todo-add-btn:hover { background-color: #2e6fba; }
 body.theme-deep-blue .todo-btn { background-color: #143055; border-color: #1c3d66; color: #d7e7ff; }
@@ -975,6 +1000,7 @@ body.theme-light-grey .todo-header { border-bottom-color: #d0d0d0; }
 body.theme-light-grey .todo-title, body.theme-light-grey .todo-text { color: #333333; }
 body.theme-light-grey .todo-input { background-color: #ffffff; color: #333333; border-color: #cccccc; }
 body.theme-light-grey .todo-empty { color: #666666; }
+body.theme-light-grey .gh-issue-meta { color: #666666; }
 body.theme-light-grey .todo-add-btn { background-color: #2472c8; color: #ffffff; }
 body.theme-light-grey .todo-add-btn:hover { background-color: #1d5ea4; }
 body.theme-light-grey .todo-btn { background-color: #eaeaea; border-color: #cccccc; color: #333333; }
@@ -986,6 +1012,7 @@ body.theme-end-times .todo-header { border-bottom-color: #333333; }
 body.theme-end-times .todo-title, body.theme-end-times .todo-text { color: #f5f543; }
 body.theme-end-times .todo-input { background-color: #000000; color: #f5f543; border-color: #333333; }
 body.theme-end-times .todo-empty { color: #c8c86b; }
+body.theme-end-times .gh-issue-meta { color: #c8c86b; }
 body.theme-end-times .todo-add-btn { background-color: #b3a800; color: #000000; }
 body.theme-end-times .todo-add-btn:hover { background-color: #d6ca00; color: #000000; }
 body.theme-end-times .todo-btn { background-color: #1a1a1a; border-color: #333333; color: #f5f543; }

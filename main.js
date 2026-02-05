@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
+const https = require('https');
 let pty = null;
 // Track backup timers per project
 const backupSchedulers = new Map();
@@ -25,6 +26,7 @@ const todoWatchers = new Map();
 // Load user preferences from project-level `.user` and home-level fallback
 function loadUserPreferences(projectPath) {
   const prefs = { version: 1, defaults: {}, language_prefs: {} };
+  let homePrefs = null;
   try {
     // Project-level .user
     if (projectPath) {
@@ -43,7 +45,7 @@ function loadUserPreferences(projectPath) {
     const homeUserPath = path.join(os.homedir(), '.supercli.user');
     if (fs.existsSync(homeUserPath)) {
       const rawHome = fs.readFileSync(homeUserPath, 'utf8');
-      const homePrefs = JSON.parse(rawHome);
+      homePrefs = JSON.parse(rawHome);
       // Merge only missing keys from home into prefs (project has precedence)
       for (const [k, v] of Object.entries(homePrefs)) {
         if (prefs[k] === undefined) prefs[k] = v;
@@ -53,7 +55,123 @@ function loadUserPreferences(projectPath) {
     console.warn('Failed to parse home .supercli.user:', e.message);
   }
 
+  // Ensure GitHub token can be sourced globally from home prefs
+  try {
+    const homeToken = homePrefs?.integrations?.github?.token;
+    if (homeToken) {
+      if (!prefs.integrations) prefs.integrations = {};
+      if (!prefs.integrations.github) prefs.integrations.github = {};
+      if (!prefs.integrations.github.token) {
+        prefs.integrations.github.token = homeToken;
+      }
+    }
+  } catch (_) { /* noop */ }
+
   return prefs;
+}
+
+function resolveGitConfigPath(projectPath) {
+  const dotGit = path.join(projectPath, '.git');
+  if (!fs.existsSync(dotGit)) return null;
+  try {
+    const stat = fs.statSync(dotGit);
+    if (stat.isDirectory()) {
+      const cfg = path.join(dotGit, 'config');
+      return fs.existsSync(cfg) ? cfg : null;
+    }
+    if (stat.isFile()) {
+      const raw = fs.readFileSync(dotGit, 'utf8');
+      const match = raw.match(/gitdir:\s*(.+)/i);
+      if (!match) return null;
+      const gitDir = match[1].trim();
+      const resolved = path.resolve(projectPath, gitDir);
+      const cfg = path.join(resolved, 'config');
+      return fs.existsSync(cfg) ? cfg : null;
+    }
+  } catch (_) {
+    return null;
+  }
+  return null;
+}
+
+function parseGithubRepoFromUrl(url) {
+  if (!url) return null;
+  const trimmed = String(url).trim();
+  let match = trimmed.match(/github\.com[:/](.+?)(\.git)?$/i);
+  if (!match) return null;
+  const pathPart = match[1].replace(/^\/+/, '');
+  const pieces = pathPart.split('/');
+  if (pieces.length < 2) return null;
+  const owner = pieces[0];
+  const repo = pieces[1];
+  if (!owner || !repo) return null;
+  return { owner, repo };
+}
+
+function detectGithubRepo(projectPath) {
+  const configPath = resolveGitConfigPath(projectPath);
+  if (!configPath) return null;
+  const raw = fs.readFileSync(configPath, 'utf8');
+  const lines = raw.split(/\r?\n/);
+  const remotes = {};
+  let currentRemote = null;
+  for (const line of lines) {
+    const header = line.match(/^\s*\[remote\s+\"(.+?)\"\]\s*$/i);
+    if (header) {
+      currentRemote = header[1];
+      remotes[currentRemote] = remotes[currentRemote] || {};
+      continue;
+    }
+    const urlMatch = line.match(/^\s*url\s*=\s*(.+)\s*$/i);
+    if (urlMatch && currentRemote) {
+      remotes[currentRemote].url = urlMatch[1].trim();
+    }
+  }
+
+  const originUrl = remotes.origin?.url;
+  if (originUrl) {
+    const repo = parseGithubRepoFromUrl(originUrl);
+    if (repo) return repo;
+  }
+  for (const remote of Object.values(remotes)) {
+    const repo = parseGithubRepoFromUrl(remote.url);
+    if (repo) return repo;
+  }
+  return null;
+}
+
+function githubApiRequest(method, apiPath, token, body) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
+    const options = {
+      hostname: 'api.github.com',
+      path: apiPath,
+      method,
+      headers: {
+        'User-Agent': 'SuperCLI',
+        'Accept': 'application/vnd.github+json'
+      }
+    };
+    if (token) options.headers.Authorization = `Bearer ${token}`;
+    if (payload) {
+      options.headers['Content-Type'] = 'application/json';
+      options.headers['Content-Length'] = Buffer.byteLength(payload);
+    }
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        let json = null;
+        if (data) {
+          try { json = JSON.parse(data); } catch (_) { json = null; }
+        }
+        resolve({ status: res.statusCode, json });
+      });
+    });
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
 }
 
 function escapePowerShellSingleQuotes(value = '') {
@@ -785,12 +903,119 @@ ipcMain.handle('save-user-preferences', async (event, projectPath, preferences) 
       prefsObject.version = 1;
     }
 
+    // If a GitHub token is provided, persist it to the home-level prefs for reuse
+    let wroteHomeToken = false;
+    try {
+      const ghToken = prefsObject?.integrations?.github?.token;
+      if (ghToken) {
+        const homeUserPath = path.join(os.homedir(), '.supercli.user');
+        let homePrefs = {};
+        if (fs.existsSync(homeUserPath)) {
+          try {
+            homePrefs = JSON.parse(fs.readFileSync(homeUserPath, 'utf8'));
+          } catch (_) {
+            homePrefs = {};
+          }
+        }
+        if (!homePrefs.integrations) homePrefs.integrations = {};
+        if (!homePrefs.integrations.github) homePrefs.integrations.github = {};
+        homePrefs.integrations.github.token = ghToken;
+        fs.writeFileSync(homeUserPath, JSON.stringify(homePrefs, null, 2), 'utf8');
+        wroteHomeToken = true;
+      }
+    } catch (e) {
+      console.warn('Failed to save GitHub token to home prefs:', e.message);
+    }
+
+    if (wroteHomeToken && prefsObject?.integrations?.github?.token) {
+      delete prefsObject.integrations.github.token;
+    }
+
     fs.writeFileSync(targetPath, JSON.stringify(prefsObject, null, 2), 'utf8');
     // Restart backup scheduler with new preferences if backup block changed/exists
     try { startBackupScheduler(projectPath, prefsObject); } catch (_) {}
     return { success: true, path: targetPath };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('github-issues', async (event, projectPath, options = {}) => {
+  try {
+    if (!projectPath) throw new Error('Missing projectPath');
+    const repo = detectGithubRepo(projectPath);
+    if (!repo) throw new Error('Unable to detect GitHub repo from .git/config');
+
+    const prefs = loadUserPreferences(projectPath);
+    const gh = prefs?.integrations?.github || {};
+    const token = gh.token || '';
+    const state = options.state || gh.issue_state || 'open';
+    const labels = options.labels || gh.labels || '';
+
+    const params = new URLSearchParams({ state, per_page: '100' });
+    if (labels) params.append('labels', labels);
+    const apiPath = `/repos/${repo.owner}/${repo.repo}/issues?${params.toString()}`;
+    const res = await githubApiRequest('GET', apiPath, token, null);
+
+    if (!res || res.status < 200 || res.status >= 300) {
+      const msg = res?.json?.message || `GitHub API error (${res?.status || 'unknown'})`;
+      throw new Error(msg);
+    }
+
+    const issues = Array.isArray(res.json) ? res.json : [];
+    const filtered = issues.filter(i => !i.pull_request).map(i => ({
+      id: i.id,
+      number: i.number,
+      title: i.title,
+      state: i.state,
+      html_url: i.html_url,
+      labels: Array.isArray(i.labels) ? i.labels.map(l => l.name).filter(Boolean) : []
+    }));
+
+    return { success: true, repo, issues: filtered };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('github-issue-set-state', async (event, projectPath, issueNumber, newState, comment) => {
+  try {
+    if (!projectPath) throw new Error('Missing projectPath');
+    if (!issueNumber) throw new Error('Missing issue number');
+    const repo = detectGithubRepo(projectPath);
+    if (!repo) throw new Error('Unable to detect GitHub repo from .git/config');
+
+    const prefs = loadUserPreferences(projectPath);
+    const gh = prefs?.integrations?.github || {};
+    const token = gh.token || '';
+    if (!token) throw new Error('Missing GitHub token');
+
+    const desiredState = newState === 'closed' ? 'closed' : 'open';
+    const updatePath = `/repos/${repo.owner}/${repo.repo}/issues/${issueNumber}`;
+    const updateRes = await githubApiRequest('PATCH', updatePath, token, { state: desiredState });
+    if (!updateRes || updateRes.status < 200 || updateRes.status >= 300) {
+      const msg = updateRes?.json?.message || `GitHub API error (${updateRes?.status || 'unknown'})`;
+      throw new Error(msg);
+    }
+
+    if (comment && String(comment).trim()) {
+      const commentPath = `/repos/${repo.owner}/${repo.repo}/issues/${issueNumber}/comments`;
+      await githubApiRequest('POST', commentPath, token, { body: String(comment).trim() });
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('open-external', async (event, url) => {
+  try {
+    if (!url) throw new Error('Missing URL');
+    await shell.openExternal(String(url));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message || String(error) };
   }
 });
 

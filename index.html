@@ -96,8 +96,22 @@
         <button class="todo-close" id="todoCloseBtn" title="Close">×</button>
       </div>
       <div class="todo-body">
+        <div class="todo-section-title">Local TODO</div>
         <div id="todoEmptyState" class="todo-empty">No items yet. Add one below.</div>
         <div id="todoList" class="todo-list"></div>
+        <div class="todo-section-title">GitHub Issues</div>
+        <div class="todo-gh-controls">
+          <select id="ghIssueState" class="todo-input">
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+            <option value="all">Open + Closed</option>
+          </select>
+          <input id="ghIssueLabels" class="todo-input" type="text" placeholder="labels (comma-separated)" />
+          <button id="ghIssueReloadBtn" class="todo-add-btn" title="Sync issues">Sync</button>
+        </div>
+        <div id="ghIssueMeta" class="todo-empty">GitHub not configured yet.</div>
+        <div id="ghIssueEmpty" class="todo-empty" style="display:none;">No issues found.</div>
+        <div id="ghIssueList" class="todo-list"></div>
       </div>
       <div class="todo-footer">
         <input id="todoAddSection" class="todo-input" type="text" placeholder="section (optional)" />
@@ -216,6 +230,32 @@
         </div>
         <p class="settings-hint">Backups include .supercli/** and TODO.md by default. Files are timestamped and rotated based on retention count.</p>
       </div>
+      <div class="settings-section">
+        <h3 class="settings-subhead">GitHub</h3>
+        <div class="settings-grid">
+          <label for="ghEnabled">Enable GitHub issues</label>
+          <input id="ghEnabled" type="checkbox" class="settings-checkbox" />
+          <label for="ghToken">GitHub token</label>
+          <input id="ghToken" class="settings-input" type="password" placeholder="ghp_..." />
+          <label for="ghIssueDefaultState">Default issue state</label>
+          <select id="ghIssueDefaultState" class="settings-select">
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+            <option value="all">Open + Closed</option>
+          </select>
+          <label for="ghIssueDefaultLabels">Default labels</label>
+          <input id="ghIssueDefaultLabels" class="settings-input" type="text" placeholder="bug,help wanted" />
+          <label for="ghCommentOnClose">Comment when closing</label>
+          <input id="ghCommentOnClose" type="checkbox" class="settings-checkbox" />
+          <label for="ghCloseComment">Close comment</label>
+          <input id="ghCloseComment" class="settings-input" type="text" placeholder="Closed via SuperCLI." />
+          <label for="ghCommentOnReopen">Comment when reopening</label>
+          <input id="ghCommentOnReopen" type="checkbox" class="settings-checkbox" />
+          <label for="ghReopenComment">Reopen comment</label>
+          <input id="ghReopenComment" class="settings-input" type="text" placeholder="Reopened via SuperCLI." />
+        </div>
+        <p class="settings-hint">Repo auto-detected from .git/config. Use {{number}} and {{title}} in comments.</p>
+      </div>
 
       <div class="settings-section">
         <label class="settings-label"><input type="checkbox" id="settingsShowJson" /> Advanced: show raw .user JSON</label>
@@ -233,3 +273,4 @@
   <script src="renderer.js"></script>
 </body>
 </html>
+

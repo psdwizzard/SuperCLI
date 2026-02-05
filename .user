@@ -10,7 +10,7 @@
       "remember_window_bounds": false
     },
     "ui": {
-      "theme": "end-times",
+      "theme": "dark",
       "font_size": 14
     }
   },
@@ -23,6 +23,24 @@
         "use_requirements_txt": false
       },
       "entrypoint": "main.py"
+    }
+  },
+  "backup": {
+    "enabled": false,
+    "interval_minutes": 60,
+    "retention_count": 4,
+    "target_dir": ".supercli/backups",
+    "compress": false
+  },
+  "integrations": {
+    "github": {
+      "enabled": true,
+      "issue_state": "open",
+      "labels": "",
+      "comment_on_close": false,
+      "close_comment": "Closed via SuperCLI.",
+      "comment_on_reopen": false,
+      "reopen_comment": "Reopened via SuperCLI."
     }
   }
 }

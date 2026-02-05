@@ -22,6 +22,9 @@ window.electronAPI = {
   saveTodo: (projectPath, items) => ipcRenderer.invoke('save-todo', projectPath, items),
   watchTodo: (projectPath) => ipcRenderer.invoke('watch-todo', projectPath),
   unwatchTodo: (projectPath) => ipcRenderer.invoke('unwatch-todo', projectPath),
+  getGithubIssues: (projectPath, options) => ipcRenderer.invoke('github-issues', projectPath, options),
+  setGithubIssueState: (projectPath, issueNumber, newState, comment) => ipcRenderer.invoke('github-issue-set-state', projectPath, issueNumber, newState, comment),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
   createTerminal: (id, cwd, cliCommand, cliLabel) => ipcRenderer.invoke('create-terminal', id, cwd, cliCommand, cliLabel),
   writeToTerminal: (id, data) => ipcRenderer.invoke('write-to-terminal', id, data),
   resizeTerminal: (id, cols, rows) => ipcRenderer.invoke('resize-terminal', id, cols, rows),
@@ -56,6 +59,9 @@ const state = {
   projectInfo: null,
   userPrefsByProject: new Map(),
   todoByProject: new Map(),
+  githubIssuesByProject: new Map(),
+  githubIssueStatusByProject: new Map(),
+  githubIssueFiltersByProject: new Map(),
   terminals: new Map(),
   activeTerminalId: null,
   terminalCounter: 0,
@@ -84,9 +90,14 @@ function setActiveProject(projectPath) {
     projectPathElement.textContent = projectPath || 'No project selected';
     projectPathElement.title = projectPath || '';
   }
+  if (projectPath && !state.userPrefsByProject.has(projectPath)) {
+    loadUserPreferencesForProject(projectPath);
+  }
   updateProjectSelector();
   refreshTabsForActiveProject();
   loadExplorerTree();
+  applyGithubControlsForProject(projectPath);
+  renderGithubIssues();
   // Apply theme from project preferences (if available)
   try {
     const prefs = state.userPrefsByProject.get(projectPath);
@@ -96,8 +107,26 @@ function setActiveProject(projectPath) {
   // Refresh TODO for active project if panel visible
   if (todoPanel && todoPanel.classList.contains('active')) {
     ensureTodoLoadedForProject(projectPath).then(() => renderTodoList());
+    applyGithubControlsForProject(projectPath);
+    ensureGithubIssuesLoadedForProject(projectPath);
   }
   return proj;
+}
+
+async function loadUserPreferencesForProject(projectPath) {
+  if (!projectPath) return;
+  const res = await window.electronAPI.loadUserPreferences(projectPath);
+  if (res?.success) {
+    state.userPrefsByProject.set(projectPath, res.preferences);
+    if (projectPath === state.activeProjectPath) {
+      populateSettingsForm(res.preferences);
+      settingsUserJson.value = JSON.stringify(res.preferences, null, 2);
+      applyGithubControlsForProject(projectPath);
+      if (todoPanel && todoPanel.classList.contains('active')) {
+        ensureGithubIssuesLoadedForProject(projectPath, true);
+      }
+    }
+  }
 }
 
 function updateProjectSelector() {
@@ -344,12 +373,15 @@ let projectSelector;
 let cliModal, cliOptions, customCliInput, customCliCommand, modalCancel, modalConfirm, newProjectCheckbox;
 let settingsBtn, settingsModal, settingsProjectName, settingsUserJson, settingsSave, settingsClose, settingsReload;
 let todoBtn, todoPanel, todoCloseBtn, todoList, todoAddInput, todoAddBtn, todoEmptyState, todoSaveBtn, todoReloadBtn, todoAddSection;
+let ghIssueStateSelect, ghIssueLabelsInput, ghIssueReloadBtn, ghIssueList, ghIssueEmpty, ghIssueMeta;
 // Settings form elements (General)
 let profileNameInput, profileNotesInput, restoreOnLaunchChk, rememberWindowBoundsChk, themeSelectEl, fontSizeInput;
 // Settings form elements (Python)
 let pyDepThresholdInput, pyVenvDirInput, pyExeInput, pyUseReqChk, pyEntrypointInput, pyIncludeTemplatesChk, pyInstallBatText, pyRunBatText, settingsGenDefaultsBtn, settingsShowJsonChk;
 // Settings form elements (Backup)
 let backupEnabledChk, backupIntervalInput, backupRetentionInput, backupTargetDirInput, backupCompressChk;
+// Settings form elements (GitHub)
+let ghEnabledChk, ghTokenInput, ghIssueDefaultStateSelect, ghIssueDefaultLabelsInput, ghCommentOnCloseChk, ghCloseCommentInput, ghCommentOnReopenChk, ghReopenCommentInput;
 
 // Initialize
 async function init() {
@@ -390,6 +422,12 @@ async function init() {
     todoSaveBtn = document.getElementById('todoSaveBtn');
     todoReloadBtn = document.getElementById('todoReloadBtn');
     todoAddSection = document.getElementById('todoAddSection');
+    ghIssueStateSelect = document.getElementById('ghIssueState');
+    ghIssueLabelsInput = document.getElementById('ghIssueLabels');
+    ghIssueReloadBtn = document.getElementById('ghIssueReloadBtn');
+    ghIssueList = document.getElementById('ghIssueList');
+    ghIssueEmpty = document.getElementById('ghIssueEmpty');
+    ghIssueMeta = document.getElementById('ghIssueMeta');
     // Settings form inputs
     profileNameInput = document.getElementById('profileName');
     profileNotesInput = document.getElementById('profileNotes');
@@ -413,6 +451,14 @@ async function init() {
     backupRetentionInput = document.getElementById('backupRetention');
     backupTargetDirInput = document.getElementById('backupTargetDir');
     backupCompressChk = document.getElementById('backupCompress');
+    ghEnabledChk = document.getElementById('ghEnabled');
+    ghTokenInput = document.getElementById('ghToken');
+    ghIssueDefaultStateSelect = document.getElementById('ghIssueDefaultState');
+    ghIssueDefaultLabelsInput = document.getElementById('ghIssueDefaultLabels');
+    ghCommentOnCloseChk = document.getElementById('ghCommentOnClose');
+    ghCloseCommentInput = document.getElementById('ghCloseComment');
+    ghCommentOnReopenChk = document.getElementById('ghCommentOnReopen');
+    ghReopenCommentInput = document.getElementById('ghReopenComment');
 
     // Modal elements
     cliModal = document.getElementById('cliModal');
@@ -486,6 +532,24 @@ function setupEventListeners() {
       if (!state.activeProjectPath) return;
       await ensureTodoLoadedForProject(state.activeProjectPath, true);
       renderTodoList();
+    });
+  }
+  if (ghIssueReloadBtn) {
+    ghIssueReloadBtn.addEventListener('click', () => {
+      ensureGithubIssuesLoadedForProject(state.activeProjectPath, true);
+    });
+  }
+  if (ghIssueStateSelect) {
+    ghIssueStateSelect.addEventListener('change', () => {
+      ensureGithubIssuesLoadedForProject(state.activeProjectPath, true);
+    });
+  }
+  if (ghIssueLabelsInput) {
+    ghIssueLabelsInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        ensureGithubIssuesLoadedForProject(state.activeProjectPath, true);
+      }
     });
   }
   if (settingsClose) {
@@ -1086,6 +1150,8 @@ function setTodoPanelVisible(visible) {
     todoPanel.classList.add('active');
     if (state.activeProjectPath) {
       ensureTodoLoadedForProject(state.activeProjectPath).then(() => renderTodoList());
+      applyGithubControlsForProject(state.activeProjectPath);
+      ensureGithubIssuesLoadedForProject(state.activeProjectPath);
     }
   } else {
     todoPanel.classList.remove('active');
@@ -1150,6 +1216,177 @@ function renderTodoList() {
   });
 }
 
+function getGithubPrefs(projectPath) {
+  const prefs = state.userPrefsByProject.get(projectPath) || {};
+  const gh = prefs?.integrations?.github || {};
+  return {
+    enabled: Boolean(gh.enabled),
+    token: gh.token || '',
+    issue_state: gh.issue_state || 'open',
+    labels: gh.labels || '',
+    comment_on_close: Boolean(gh.comment_on_close),
+    close_comment: gh.close_comment || 'Closed via SuperCLI.',
+    comment_on_reopen: Boolean(gh.comment_on_reopen),
+    reopen_comment: gh.reopen_comment || 'Reopened via SuperCLI.'
+  };
+}
+
+function getGithubFiltersForProject(projectPath) {
+  return state.githubIssueFiltersByProject.get(projectPath) || null;
+}
+
+function applyGithubControlsForProject(projectPath) {
+  if (!projectPath) return;
+  const filters = getGithubFiltersForProject(projectPath);
+  const prefs = getGithubPrefs(projectPath);
+  if (ghIssueStateSelect) {
+    ghIssueStateSelect.value = (filters?.state || prefs.issue_state || 'open');
+  }
+  if (ghIssueLabelsInput) {
+    ghIssueLabelsInput.value = (filters?.labels || prefs.labels || '');
+  }
+}
+
+function readGithubFiltersFromUi(projectPath) {
+  if (!projectPath) return { state: 'open', labels: '' };
+  const stateValue = ghIssueStateSelect?.value || 'open';
+  const labelsValue = (ghIssueLabelsInput?.value || '').trim();
+  const filters = { state: stateValue, labels: labelsValue };
+  state.githubIssueFiltersByProject.set(projectPath, filters);
+  return filters;
+}
+
+function buildGithubComment(template, issue) {
+  return String(template || '')
+    .replaceAll('{{number}}', String(issue.number || ''))
+    .replaceAll('{{title}}', String(issue.title || ''));
+}
+
+async function ensureGithubIssuesLoadedForProject(projectPath, forceReload = false) {
+  if (!projectPath) return;
+  const prefs = getGithubPrefs(projectPath);
+  if (!prefs.enabled) {
+    state.githubIssuesByProject.set(projectPath, { issues: [], repo: null });
+    state.githubIssueStatusByProject.set(projectPath, { type: 'disabled', message: 'GitHub integration disabled. Enable it in Settings.' });
+    renderGithubIssues();
+    return;
+  }
+  const filters = readGithubFiltersFromUi(projectPath);
+  if (!forceReload) {
+    const cached = state.githubIssuesByProject.get(projectPath);
+    const prev = state.githubIssueFiltersByProject.get(projectPath);
+    if (cached && prev && prev.state === filters.state && prev.labels === filters.labels) {
+      renderGithubIssues();
+      return;
+    }
+  }
+  state.githubIssueStatusByProject.set(projectPath, { type: 'loading', message: 'Loading issues...' });
+  renderGithubIssues();
+  const res = await window.electronAPI.getGithubIssues(projectPath, filters);
+  if (res?.success) {
+    state.githubIssuesByProject.set(projectPath, { issues: res.issues || [], repo: res.repo || null });
+    const repoLabel = res.repo ? `Repo: ${res.repo.owner}/${res.repo.repo}` : 'Repo detected.';
+    state.githubIssueStatusByProject.set(projectPath, { type: 'ready', message: repoLabel });
+  } else {
+    state.githubIssuesByProject.set(projectPath, { issues: [], repo: res?.repo || null });
+    state.githubIssueStatusByProject.set(projectPath, { type: 'error', message: res?.error || 'Unable to load issues.' });
+  }
+  renderGithubIssues();
+}
+
+function renderGithubIssues() {
+  if (!ghIssueList || !ghIssueMeta || !ghIssueEmpty) return;
+  const projectPath = state.activeProjectPath;
+  if (!projectPath) return;
+  const prefs = getGithubPrefs(projectPath);
+  const status = state.githubIssueStatusByProject.get(projectPath);
+  const data = state.githubIssuesByProject.get(projectPath) || { issues: [], repo: null };
+  const issues = data.issues || [];
+
+  let metaText = '';
+  if (!prefs.enabled) {
+    metaText = 'GitHub integration disabled. Enable it in Settings.';
+  } else if (status?.type === 'loading') {
+    metaText = status.message || 'Loading issues...';
+  } else if (status?.type === 'error') {
+    metaText = status.message || 'Unable to load issues.';
+  } else if (data.repo) {
+    metaText = `Repo: ${data.repo.owner}/${data.repo.repo}`;
+  } else if (status?.message) {
+    metaText = status.message;
+  } else {
+    metaText = 'Repo not detected.';
+  }
+
+  ghIssueMeta.textContent = metaText;
+  ghIssueMeta.style.display = metaText ? 'block' : 'none';
+  ghIssueEmpty.style.display = (prefs.enabled && status?.type !== 'loading' && issues.length === 0) ? 'block' : 'none';
+
+  ghIssueList.innerHTML = '';
+  issues.forEach((issue) => {
+    const row = document.createElement('div');
+    row.className = 'todo-item';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'todo-checkbox';
+    cb.checked = issue.state === 'closed';
+    row.classList.toggle('done', cb.checked);
+
+    cb.addEventListener('change', async () => {
+      if (!projectPath) return;
+      const newState = cb.checked ? 'closed' : 'open';
+      const commentTemplate = newState === 'closed' ? prefs.close_comment : prefs.reopen_comment;
+      const commentEnabled = newState === 'closed' ? prefs.comment_on_close : prefs.comment_on_reopen;
+      const comment = commentEnabled ? buildGithubComment(commentTemplate, issue) : '';
+
+      cb.disabled = true;
+      const res = await window.electronAPI.setGithubIssueState(projectPath, issue.number, newState, comment);
+      cb.disabled = false;
+      if (res?.success) {
+        issue.state = newState;
+        row.classList.toggle('done', newState === 'closed');
+      } else {
+        cb.checked = !cb.checked;
+        row.classList.toggle('done', cb.checked);
+        state.githubIssueStatusByProject.set(projectPath, { type: 'error', message: res?.error || 'Failed to update issue.' });
+        renderGithubIssues();
+      }
+    });
+
+    const content = document.createElement('div');
+    content.className = 'gh-issue-content';
+
+    const text = document.createElement('span');
+    text.className = 'todo-text';
+    text.textContent = `#${issue.number} ${issue.title || ''}`.trim();
+    content.appendChild(text);
+
+    if (Array.isArray(issue.labels) && issue.labels.length > 0) {
+      const meta = document.createElement('span');
+      meta.className = 'gh-issue-meta';
+      meta.textContent = issue.labels.join(', ');
+      content.appendChild(meta);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'todo-actions';
+    const openBtn = document.createElement('button');
+    openBtn.className = 'todo-btn';
+    openBtn.textContent = 'Open';
+    openBtn.title = 'Open in browser';
+    openBtn.addEventListener('click', () => {
+      if (issue.html_url) window.electronAPI.openExternal(issue.html_url);
+    });
+    actions.appendChild(openBtn);
+
+    row.appendChild(cb);
+    row.appendChild(content);
+    row.appendChild(actions);
+    ghIssueList.appendChild(row);
+  });
+}
+
 function handleTodoAdd() {
   const text = (todoAddInput?.value || '').trim();
   if (!text) return;
@@ -1205,6 +1442,10 @@ async function reloadSettingsFromDisk() {
     state.userPrefsByProject.set(state.activeProjectPath, res.preferences);
     populateSettingsForm(res.preferences);
     settingsUserJson.value = JSON.stringify(res.preferences, null, 2);
+    applyGithubControlsForProject(state.activeProjectPath);
+    if (todoPanel && todoPanel.classList.contains('active')) {
+      ensureGithubIssuesLoadedForProject(state.activeProjectPath, true);
+    }
     inputInfo.textContent = 'Preferences loaded';
     inputInfo.style.color = '#4ec9b0';
     setTimeout(() => {
@@ -1241,6 +1482,10 @@ async function saveSettingsToDisk() {
     inputInfo.style.color = '#4ec9b0';
     // Apply theme immediately
     applyTheme(prefs?.defaults?.ui?.theme || 'dark');
+    applyGithubControlsForProject(state.activeProjectPath);
+    if (todoPanel && todoPanel.classList.contains('active')) {
+      ensureGithubIssuesLoadedForProject(state.activeProjectPath, true);
+    }
     setTimeout(() => {
       updateInputInfoForTerminal(state.terminals.get(state.activeTerminalId) || null);
     }, 1500);
@@ -1444,6 +1689,16 @@ function populateSettingsForm(prefs) {
   backupRetentionInput.value = backup.retention_count != null ? backup.retention_count : 4;
   backupTargetDirInput.value = backup.target_dir || '.supercli/backups';
   backupCompressChk.checked = Boolean(backup.compress);
+
+  const gh = prefs?.integrations?.github || {};
+  ghEnabledChk.checked = Boolean(gh.enabled);
+  ghTokenInput.value = gh.token || '';
+  ghIssueDefaultStateSelect.value = gh.issue_state || 'open';
+  ghIssueDefaultLabelsInput.value = gh.labels || '';
+  ghCommentOnCloseChk.checked = Boolean(gh.comment_on_close);
+  ghCloseCommentInput.value = gh.close_comment || 'Closed via SuperCLI.';
+  ghCommentOnReopenChk.checked = Boolean(gh.comment_on_reopen);
+  ghReopenCommentInput.value = gh.reopen_comment || 'Reopened via SuperCLI.';
 }
 
 function buildPreferencesFromForm() {
@@ -1489,6 +1744,19 @@ function buildPreferencesFromForm() {
     retention_count: Number(backupRetentionInput.value || 4),
     target_dir: backupTargetDirInput.value || '.supercli/backups',
     compress: Boolean(backupCompressChk.checked)
+  };
+
+  prefs.integrations = {
+    github: {
+      enabled: Boolean(ghEnabledChk.checked),
+      token: ghTokenInput.value || '',
+      issue_state: ghIssueDefaultStateSelect.value || 'open',
+      labels: ghIssueDefaultLabelsInput.value || '',
+      comment_on_close: Boolean(ghCommentOnCloseChk.checked),
+      close_comment: ghCloseCommentInput.value || 'Closed via SuperCLI.',
+      comment_on_reopen: Boolean(ghCommentOnReopenChk.checked),
+      reopen_comment: ghReopenCommentInput.value || 'Reopened via SuperCLI.'
+    }
   };
 
   return prefs;
