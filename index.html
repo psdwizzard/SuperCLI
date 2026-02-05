@@ -16,19 +16,19 @@
         <p class="modal-subtitle">Choose which CLI to launch for this tab</p>
         <div class="cli-options">
           <button class="cli-option" data-cli="claude">
-            <div class="cli-icon">🤖</div>
+            <div class="cli-icon">&#x1f916;</div>
             <div class="cli-name">Claude</div>
           </button>
           <button class="cli-option" data-cli="codex">
-            <div class="cli-icon">💻</div>
+            <div class="cli-icon">&#x1f4bb;</div>
             <div class="cli-name">Codex</div>
           </button>
           <button class="cli-option" data-cli="gemini">
-            <div class="cli-icon">✨</div>
+            <div class="cli-icon">&#x2728;</div>
             <div class="cli-name">Gemini</div>
           </button>
           <button class="cli-option" data-cli="custom">
-            <div class="cli-icon">⚙️</div>
+            <div class="cli-icon">&#x2699;&#xfe0f;</div>
             <div class="cli-name">Custom</div>
           </button>
         </div>
@@ -42,10 +42,34 @@
             <span class="new-project-hint">Pick a different folder before launching this tab</span>
           </div>
         </label>
+        <div class="template-selector" id="templateSelectorContainer" style="display: none;"></div>
         <div class="modal-actions">
           <button class="modal-btn modal-cancel" id="modalCancel">Cancel</button>
           <button class="modal-btn modal-confirm" id="modalConfirm">Launch</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Shortcuts Modal -->
+    <div class="modal" id="shortcutsModal">
+      <div class="modal-content" style="max-width: 650px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h2 style="margin: 0;">Keyboard Shortcuts</h2>
+          <button class="shortcuts-close" style="background: none; border: none; color: #d4d4d4; font-size: 22px; cursor: pointer;">&#x00d7;</button>
+        </div>
+        <p class="modal-subtitle">Click "Rebind" to change a shortcut. Press any key combo to assign it.</p>
+        <div class="shortcuts-grid"></div>
+      </div>
+    </div>
+
+    <!-- Theme Creator Modal -->
+    <div class="modal" id="themeCreatorModal">
+      <div class="modal-content" style="max-width: 700px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h2 style="margin: 0;">Theme Creator</h2>
+          <button class="theme-creator-close" style="background: none; border: none; color: #d4d4d4; font-size: 22px; cursor: pointer;" onclick="document.getElementById('themeCreatorModal').classList.remove('active')">&#x00d7;</button>
+        </div>
+        <div class="theme-creator-content"></div>
       </div>
     </div>
 
@@ -60,7 +84,9 @@
       </div>
       <div class="project-info">
         <span class="project-path" id="projectPath">No project selected</span>
+        <button class="project-btn" id="snippetsBtn" title="Snippets">Snippets</button>
         <button class="project-btn" id="todoBtn" title="Show/Hide TODO">Todo</button>
+        <button class="project-btn" id="shortcutsBtn" title="Keyboard Shortcuts">Shortcuts</button>
         <button class="project-btn" id="settingsBtn" title="Settings">Settings</button>
         <button class="debug-btn" id="debugBtn" title="Open DevTools">Debug Tools</button>
       </div>
@@ -89,11 +115,36 @@
       <button class="input-tool-btn" id="numberedListBtn" title="Numbered list">1.</button>
     </div>
 
+    <!-- Snippet side panel -->
+    <div class="snippet-panel" id="snippetPanel">
+      <div class="snippet-header">
+        <span class="snippet-title">Snippets</span>
+        <button class="snippet-close" title="Close">&#x00d7;</button>
+      </div>
+      <div class="snippet-body">
+        <input class="snippet-search todo-input" type="text" placeholder="Search snippets..." />
+        <select class="snippet-category-filter todo-input" style="margin-top: 6px;">
+          <option value="">All Categories</option>
+          <option value="Prompts">Prompts</option>
+          <option value="Commands">Commands</option>
+          <option value="General">General</option>
+        </select>
+        <div class="snippet-empty" style="margin-top: 8px;">No snippets yet. Add one below.</div>
+        <div class="snippet-list" style="margin-top: 8px;"></div>
+      </div>
+      <div class="snippet-footer">
+        <input class="snippet-name-input todo-input" type="text" placeholder="Snippet name" />
+        <textarea class="snippet-content-input todo-input" placeholder="Snippet content" rows="3" style="resize: vertical; min-height: 60px;"></textarea>
+        <input class="snippet-category-input todo-input" type="text" placeholder="Category (optional)" />
+        <button class="snippet-add-btn todo-add-btn">Add Snippet</button>
+      </div>
+    </div>
+
     <!-- Todo side panel -->
     <div class="todo-panel" id="todoPanel">
       <div class="todo-header">
         <span class="todo-title">Project TODO</span>
-        <button class="todo-close" id="todoCloseBtn" title="Close">×</button>
+        <button class="todo-close" id="todoCloseBtn" title="Close">&#x00d7;</button>
       </div>
       <div class="todo-body">
         <div class="todo-section-title">Local TODO</div>
@@ -163,14 +214,17 @@
           <input id="rememberWindowBounds" type="checkbox" class="settings-checkbox" />
 
           <label for="themeSelect">Theme</label>
-          <select id="themeSelect" class="settings-select">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-            <option value="deep-blue">Deep Blue</option>
-            <option value="light-grey">Light Grey</option>
-            <option value="end-times">End Times</option>
-            <option value="matrix">Green Matrix</option>
-          </select>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="themeSelect" class="settings-select" style="flex: 1;">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="deep-blue">Deep Blue</option>
+              <option value="light-grey">Light Grey</option>
+              <option value="end-times">End Times</option>
+              <option value="matrix">Green Matrix</option>
+            </select>
+            <button class="modal-btn" id="createThemeBtn" style="white-space: nowrap; padding: 6px 12px; font-size: 12px;">Create Theme</button>
+          </div>
 
           <label for="fontSize">Font size</label>
           <input id="fontSize" class="settings-input" type="number" min="8" max="28" step="1" />
@@ -180,7 +234,7 @@
       <div class="settings-section">
         <h3 class="settings-subhead">Python</h3>
         <div class="settings-grid">
-          <label for="pyDepThreshold">Auto-venv when deps ≥</label>
+          <label for="pyDepThreshold">Auto-venv when deps &ge;</label>
           <input id="pyDepThreshold" class="settings-input" type="number" min="0" step="1" />
 
           <label for="pyVenvDir">Venv directory</label>
@@ -259,7 +313,7 @@
 
       <div class="settings-section">
         <label class="settings-label"><input type="checkbox" id="settingsShowJson" /> Advanced: show raw .user JSON</label>
-        <textarea id="settingsUserJson" class="settings-textarea" style="display:none" spellcheck="false" placeholder="{\n  \"version\": 1,\n  ...\n}"></textarea>
+        <textarea id="settingsUserJson" class="settings-textarea" style="display:none" spellcheck="false" placeholder="{\n  &quot;version&quot;: 1,\n  ...\n}"></textarea>
         <p class="settings-hint">Project-level .user overrides home (~/.supercli.user). Save writes to project .user.</p>
       </div>
       <div class="modal-actions">
@@ -270,7 +324,6 @@
     </div>
   </div>
 
-  <script src="renderer.js"></script>
+  <script>require('./src/renderer/index')</script>
 </body>
 </html>
-

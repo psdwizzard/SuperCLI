@@ -25,7 +25,18 @@ call :pickNpmCommand
 echo.
 echo Installing dependencies with %DISPLAY_NPM_CMD% (includes @lydell/node-pty)...
 call %NPM_CMD%
-if errorlevel 1 goto :installFailed
+if errorlevel 1 (
+  if defined FALLBACK_NPM_CMD (
+    echo.
+    echo [*] %DISPLAY_NPM_CMD% failed. Retrying with %FALLBACK_NPM_CMD%...
+    echo     (lock file may be out of sync — npm install will regenerate it)
+    echo.
+    call %FALLBACK_NPM_CMD%
+    if errorlevel 1 goto :installFailed
+  ) else (
+    goto :installFailed
+  )
+)
 
 echo.
 echo Dependencies installed successfully!
@@ -88,11 +99,13 @@ if !NODE_MAJOR_INT! LSS 16 (
 exit /b 0
 
 :pickNpmCommand
-set "NPM_CMD=npm install"
-set "DISPLAY_NPM_CMD=npm install"
-if exist "package-lock.json" (
-  set "NPM_CMD=npm ci"
-  set "DISPLAY_NPM_CMD=npm ci"
+set "NPM_CMD=npm ci"
+set "DISPLAY_NPM_CMD=npm ci"
+set "FALLBACK_NPM_CMD=npm install"
+if not exist "package-lock.json" (
+  set "NPM_CMD=npm install"
+  set "DISPLAY_NPM_CMD=npm install"
+  set "FALLBACK_NPM_CMD="
 )
 exit /b 0
 
