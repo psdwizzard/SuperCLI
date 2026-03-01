@@ -15,29 +15,60 @@ const shortcuts = require('./shortcuts');
 const snippets = require('./snippets');
 const templates = require('./templates');
 const themeCreator = require('./theme-creator');
+const usage = require('./usage');
 
 // DOM refs
-let projectPathElement, projectSelector, inputField, sendBtn, debugBtn, inputInfo;
+let projectPathElement, projectSelector, inputField, sendBtn, inputInfo;
 let newTabBtn, settingsBtn, todoBtn, todoCloseBtn, snippetsBtn, shortcutsBtn;
-let explorerRefreshBtn;
+let explorerRefreshBtn, micBtn, logoContainer;
+
+// Swing animation variables
+let lastWindowX = window.screenX;
+let lastWindowY = window.screenY;
+let logoAngle = 0;
+let logoVelocity = 0;
+const gravity = 0.5;
+const friction = 0.94;
 
 // --- Project management ---
 
 function ensureProject(projectPath) {
-  if (!projectPath) return null;
+  if (!projectPath) return;
   if (!state.projects.has(projectPath)) {
     state.projects.set(projectPath, {
-      id: `proj-${state.projects.size + 1}`,
       path: projectPath,
       name: path.basename(projectPath),
       tabIds: []
     });
-    updateProjectSelector();
   }
-  return state.projects.get(projectPath);
 }
 
-function setActiveProject(projectPath) {
+function updateProjectSelector() {
+  if (!projectSelector) return;
+  projectSelector.innerHTML = '';
+  for (const [projPath] of state.projects) {
+    const opt = document.createElement('option');
+    opt.value = projPath;
+    opt.textContent = path.basename(projPath);
+    opt.title = projPath;
+    projectSelector.appendChild(opt);
+  }
+  if (state.activeProjectPath) {
+    projectSelector.value = state.activeProjectPath;
+  }
+}
+
+async function loadUserPreferencesForProject(projectPath) {
+  if (!projectPath) return;
+  try {
+    const result = await api.loadUserPreferences(projectPath);
+    if (result && result.success && result.preferences) {
+      state.userPrefsByProject.set(projectPath, result.preferences);
+    }
+  } catch (_) { /* ignore */ }
+}
+
+async function setActiveProject(projectPath) {
   ensureProject(projectPath);
   state.activeProjectPath = projectPath;
   if (projectPathElement) {
@@ -45,7 +76,7 @@ function setActiveProject(projectPath) {
     projectPathElement.title = projectPath || '';
   }
   if (projectPath && !state.userPrefsByProject.has(projectPath)) {
-    loadUserPreferencesForProject(projectPath);
+    await loadUserPreferencesForProject(projectPath);
   }
   updateProjectSelector();
   tabs.refreshTabsForActiveProject({
@@ -67,62 +98,64 @@ function setActiveProject(projectPath) {
     todoPanel.applyGithubControlsForProject(projectPath);
     todoPanel.ensureGithubIssuesLoadedForProject(projectPath);
   }
+
+  // Load project logo
+  updateProjectLogo(projectPath);
 }
 
-async function loadUserPreferencesForProject(projectPath) {
+async function updateProjectLogo(projectPath) {
+  if (!logoContainer) return;
+  logoContainer.innerHTML = '';
   if (!projectPath) return;
-  const res = await api.loadUserPreferences(projectPath);
-  if (res?.success) {
-    state.userPrefsByProject.set(projectPath, res.preferences);
-    if (projectPath === state.activeProjectPath) {
-      settings.populateSettingsForm(res.preferences);
-      const settingsUserJson = document.getElementById('settingsUserJson');
-      if (settingsUserJson) settingsUserJson.value = JSON.stringify(res.preferences, null, 2);
-      todoPanel.applyGithubControlsForProject(projectPath);
-      const todoPanelEl = document.getElementById('todoPanel');
-      if (todoPanelEl && todoPanelEl.classList.contains('active')) {
-        todoPanel.ensureGithubIssuesLoadedForProject(projectPath, true);
-      }
+
+  const logoFiles = ['icon.png', 'logo.png', 'favicon.ico', 'logo.svg', 'icon.jpg', 'logo.jpg'];
+  const fs = require('fs');
+  const path = require('path');
+
+  let foundLogo = null;
+  for (const file of logoFiles) {
+    const fullPath = path.join(projectPath, file);
+    if (fs.existsSync(fullPath)) {
+      foundLogo = fullPath;
+      break;
     }
+  }
+
+  if (foundLogo) {
+    const img = document.createElement('img');
+    img.src = `file://${foundLogo}`;
+    img.className = 'project-logo';
+    img.id = 'projectLogoImg';
+    logoContainer.appendChild(img);
   }
 }
 
-function updateProjectSelector() {
-  if (!projectSelector) return;
-  const options = Array.from(state.projects.values()).map(p => ({ value: p.path, label: p.name }));
-  projectSelector.innerHTML = '';
-  options.forEach(opt => {
-    const el = document.createElement('option');
-    el.value = opt.value;
-    el.textContent = opt.label;
-    if (opt.value === state.activeProjectPath) el.selected = true;
-    projectSelector.appendChild(el);
-  });
-  projectSelector.disabled = options.length <= 1;
-}
+function updateLogoSwing() {
+  const currentX = window.screenX;
+  const currentY = window.screenY;
 
-// --- Debug ---
+  const dx = currentX - lastWindowX;
+  const dy = currentY - lastWindowY;
 
-async function handleDebugButton() {
-  try {
-    const result = await api.openDevTools();
-    if (!inputInfo) return;
-    if (result?.success) {
-      inputInfo.textContent = result.alreadyOpen ? 'DevTools already open' : 'DevTools opened in a separate window';
-      inputInfo.style.color = '#4ec9b0';
-    } else {
-      inputInfo.textContent = 'Unable to open DevTools';
-      inputInfo.style.color = '#f48771';
-    }
-    setTimeout(() => {
-      terminal.updateInputInfoForTerminal(state.terminals.get(state.activeTerminalId) || null);
-    }, 2500);
-  } catch (error) {
-    if (inputInfo) {
-      inputInfo.textContent = 'Error opening DevTools';
-      inputInfo.style.color = '#f48771';
-    }
+  if (Math.abs(dx) > 0 || Math.abs(dy) > 0) {
+    // Add velocity based on movement (horizontal movement affects swing more)
+    logoVelocity -= dx * 0.8;
   }
+
+  // Physics: Gravity pulls back to center (0), friction slows it down
+  const acceleration = -logoAngle * gravity;
+  logoVelocity += acceleration;
+  logoVelocity *= friction;
+  logoAngle += logoVelocity * 0.1;
+
+  const logoImg = document.getElementById('projectLogoImg');
+  if (logoImg) {
+    logoImg.style.transform = `rotate(${logoAngle}deg)`;
+  }
+
+  lastWindowX = currentX;
+  lastWindowY = currentY;
+  requestAnimationFrame(updateLogoSwing);
 }
 
 // --- Event wiring ---
@@ -130,11 +163,11 @@ async function handleDebugButton() {
 function setupEventListeners() {
   newTabBtn.addEventListener('click', () => cliModal.showCliModal());
   sendBtn.addEventListener('click', terminal.sendCommand);
-  if (debugBtn) {
-    debugBtn.addEventListener('click', handleDebugButton);
-  }
   if (settingsBtn) {
     settingsBtn.addEventListener('click', settings.openSettingsModal);
+  }
+  if (micBtn) {
+    micBtn.addEventListener('click', input.toggleMic);
   }
   const numberedListBtn = document.getElementById('numberedListBtn');
   if (numberedListBtn) {
@@ -261,6 +294,15 @@ function setupEventListeners() {
   // Global keyboard handler for terminal scrolling
   window.addEventListener('keydown', input.handleGlobalTerminalScroll);
 
+  // Escape closes any open modal (settings has its own handler in settings.js)
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    ['shortcutsModal', 'cliModal', 'themeCreatorModal'].forEach(id => {
+      const modal = document.getElementById(id);
+      if (modal && modal.classList.contains('active')) modal.classList.remove('active');
+    });
+  });
+
   // CLI option selection
   const cliOptions = document.querySelectorAll('.cli-option');
   cliOptions.forEach(option => {
@@ -343,6 +385,19 @@ function setupEventListeners() {
     }
   });
 
+  // Resize terminal when side panels open/close
+  window.addEventListener('panels-changed', () => {
+    if (state.activeTerminalId) {
+      const term = state.terminals.get(state.activeTerminalId);
+      if (term) {
+        requestAnimationFrame(() => {
+          term.fitAddon.fit();
+          api.resizeTerminal(state.activeTerminalId, term.xterm.cols, term.xterm.rows);
+        });
+      }
+    }
+  });
+
   // Snippets button
   if (snippetsBtn) {
     snippetsBtn.addEventListener('click', snippets.toggleSnippetPanel);
@@ -380,7 +435,6 @@ async function init() {
     projectSelector = document.getElementById('projectSelector');
     inputField = document.getElementById('inputField');
     sendBtn = document.getElementById('sendBtn');
-    debugBtn = document.getElementById('debugBtn');
     inputInfo = document.getElementById('inputInfo');
     newTabBtn = document.getElementById('newTabBtn');
     settingsBtn = document.getElementById('settingsBtn');
@@ -388,6 +442,8 @@ async function init() {
     snippetsBtn = document.getElementById('snippetsBtn');
     shortcutsBtn = document.getElementById('shortcutsBtn');
     explorerRefreshBtn = document.getElementById('explorerRefreshBtn');
+    micBtn = document.getElementById('micBtn');
+    logoContainer = document.getElementById('logoContainer');
 
     console.log('DOM elements loaded');
 
@@ -422,9 +478,13 @@ async function init() {
     snippets.init();
     templates.init();
     themeCreator.init();
+    usage.init();
 
     setupEventListeners();
     terminal.setupTerminalListeners();
+
+    // Start swing animation loop
+    updateLogoSwing();
 
     // Load custom themes
     await themeCreator.loadCustomThemes();
@@ -435,7 +495,7 @@ async function init() {
       if (startup.userPrefs) {
         state.userPrefsByProject.set(startup.projectPath, startup.userPrefs);
       }
-      setActiveProject(startup.projectPath);
+      await setActiveProject(startup.projectPath);
       // Load shortcuts from user prefs
       shortcuts.loadUserShortcuts(startup.userPrefs);
     }

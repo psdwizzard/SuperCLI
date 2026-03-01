@@ -19,6 +19,8 @@ function init(mainWindow) {
 }
 
 function createTerminal(id, cwd, cliCommand, cliLabel) {
+  // Fallback to home directory if cwd is missing
+  if (!cwd) cwd = os.homedir();
   console.log(`Creating terminal ${id} with CLI: ${cliCommand} in ${cwd}`);
   try {
     if (pty) {

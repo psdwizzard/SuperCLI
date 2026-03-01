@@ -67,6 +67,22 @@ Development mode with DevTools:
 npm run dev
 ```
 
+### Enable Local Git Hooks (Agent Diary Before Push)
+
+To make this clone require a private diary entry before every `git push`:
+
+```
+npm run hooks:install
+```
+
+Manual diary command:
+
+```
+npm run agent:diary
+```
+
+Entries are written to `.supercli/agent-private/diary.md` (inside a gitignored folder).
+
 ### Command-line Launch (Windows)
 
 To open SuperCLI in the folder you are currently in:

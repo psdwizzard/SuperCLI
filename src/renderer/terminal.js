@@ -3,6 +3,7 @@ const state = require('./state');
 const api = require('./api');
 const tabs = require('./tabs');
 const { getXtermTheme } = require('./themes');
+const usage = require('./usage');
 
 let Terminal, FitAddon;
 try {
@@ -20,6 +21,7 @@ let inputInfo = null;
 let onCloseTerminalCb = null;
 let onActivateTerminalCb = null;
 let onShowCliModalCb = null;
+const IPC_CHUNK_SIZE = 2048;
 
 function init(callbacks) {
   terminalContainer = document.getElementById('terminalContainer');
@@ -70,8 +72,7 @@ function setupTerminalClipboardShortcuts(xterm, terminalId) {
       try {
         const text = clipboard.readText();
         if (text) {
-          const normalized = text.replace(/\r\n/g, '\r').replace(/\n/g, '\r');
-          api.writeToTerminal(terminalId, normalized);
+          writeToTerminalChunked(terminalId, text, { normalizeNewlines: true });
         }
       } catch (error) {
         console.error('Failed to paste into terminal:', error);
@@ -275,7 +276,25 @@ async function closeTerminal(id) {
   }
 }
 
-function sendCommand() {
+async function writeToTerminalChunked(terminalId, payload, options = {}) {
+  let text = String(payload ?? '');
+  if (options.normalizeNewlines) {
+    text = text.replace(/\r\n/g, '\r').replace(/\n/g, '\r');
+  }
+  if (text.length <= IPC_CHUNK_SIZE) {
+    await api.writeToTerminal(terminalId, text);
+    return;
+  }
+  for (let i = 0; i < text.length; i += IPC_CHUNK_SIZE) {
+    const chunk = text.slice(i, i + IPC_CHUNK_SIZE);
+    await api.writeToTerminal(terminalId, chunk);
+    if (i + IPC_CHUNK_SIZE < text.length) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
+}
+
+async function sendCommand() {
   const inputField = document.getElementById('inputField');
   if (!state.activeTerminalId) {
     if (inputInfo) {
@@ -294,12 +313,13 @@ function sendCommand() {
     return;
   }
 
-  const command = inputField.value.trim();
+  const rawInput = inputField.value || '';
+  const hasNonWhitespace = rawInput.trim().length > 0;
   const cliLabel = getTerminalLabel(terminal);
 
-  if (!command) {
+  if (!hasNonWhitespace) {
     if (!terminal.hasSentCommand) return;
-    api.writeToTerminal(state.activeTerminalId, '\r');
+    await api.writeToTerminal(state.activeTerminalId, '\r');
     if (terminal.mode === 'embedded') {
       inputInfo.textContent = 'Enter sent to embedded terminal';
       inputInfo.style.color = '#4ec9b0';
@@ -313,9 +333,24 @@ function sendCommand() {
     return;
   }
 
-  console.log('Sending command:', command);
+  const command = rawInput.replace(/\r\n/g, '\n');
+  console.log('Sending command length:', command.length);
+  if (command.length > IPC_CHUNK_SIZE && inputInfo) {
+    inputInfo.textContent = `Sending ${command.length} characters...`;
+    inputInfo.style.color = '#4ec9b0';
+  }
 
-  api.writeToTerminal(state.activeTerminalId, `${command}\r`);
+  // Wrap multi-line text in bracketed paste escape sequences so the CLI
+  // treats it as a single pasted block, not as individual Enter presses.
+  const isMultiLine = command.includes('\n');
+  if (isMultiLine) {
+    const PASTE_START = '\x1b[200~';
+    const PASTE_END = '\x1b[201~';
+    await writeToTerminalChunked(state.activeTerminalId, PASTE_START + command + PASTE_END);
+  } else {
+    await writeToTerminalChunked(state.activeTerminalId, command);
+  }
+  await api.writeToTerminal(state.activeTerminalId, '\r');
 
   if (terminal.mode === 'embedded') {
     inputInfo.textContent = 'Command sent to embedded terminal';
@@ -328,6 +363,7 @@ function sendCommand() {
   }
 
   terminal.hasSentCommand = true;
+  usage.recordUsage(terminal.cliCommand, command.length);
 
   inputField.value = '';
   inputField.style.height = 'auto';

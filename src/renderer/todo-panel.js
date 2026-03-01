@@ -38,6 +38,7 @@ function setTodoPanelVisible(visible) {
   } else {
     todoPanel.classList.remove('active');
   }
+  requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('panels-changed')));
 }
 
 async function ensureTodoLoadedForProject(projectPath, forceReload = false) {

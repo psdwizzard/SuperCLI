@@ -38,7 +38,13 @@ const api = {
   deleteCustomTheme: (themeName) => ipcRenderer.invoke('delete-custom-theme', themeName),
   onTodoUpdatedFromDisk: (callback) => {
     ipcRenderer.on('todo-updated-from-disk', (event, projectPath, payload) => callback(projectPath, payload));
-  }
+  },
+  // Quota
+  fetchClaudeQuota: () => ipcRenderer.invoke('fetch-claude-quota'),
+  fetchCodexQuota: () => ipcRenderer.invoke('fetch-codex-quota'),
+  openCodexLogin: () => ipcRenderer.invoke('open-codex-login'),
+  openClaudeLogin: () => ipcRenderer.invoke('open-claude-login'),
+  checkMicAccess: () => ipcRenderer.invoke('check-mic-access')
 };
 
 window.electronAPI = api;

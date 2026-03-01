@@ -83,7 +83,7 @@ async function handleCliConfirm() {
       if (result.userPrefs) {
         state.userPrefsByProject.set(result.projectPath, result.userPrefs);
       }
-      if (setActiveProjectCb) setActiveProjectCb(result.projectPath);
+      if (setActiveProjectCb) await setActiveProjectCb(result.projectPath);
 
       // Apply template if selected
       if (selectedTemplate && selectedTemplate !== 'none') {
@@ -117,7 +117,7 @@ async function selectProjectFolder() {
     if (result.userPrefs) {
       state.userPrefsByProject.set(result.projectPath, result.userPrefs);
     }
-    if (setActiveProjectCb) setActiveProjectCb(result.projectPath);
+    if (setActiveProjectCb) await setActiveProjectCb(result.projectPath);
     if (inputInfo) {
       inputInfo.textContent = 'Project folder selected';
       inputInfo.style.color = '#4ec9b0';

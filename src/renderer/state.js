@@ -14,7 +14,9 @@ const state = {
   numberedListMode: false,
   snippetsByProject: new Map(),
   customThemes: [],
-  shortcuts: {}
+  shortcuts: {},
+  usageStats: new Map(),
+  quotaData: { claude: null, codex: null, lastFetch: null }
 };
 
 module.exports = state;

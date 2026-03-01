@@ -25,14 +25,16 @@ call :pickNpmCommand
 echo.
 echo Installing dependencies with %DISPLAY_NPM_CMD% (includes @lydell/node-pty)...
 call %NPM_CMD%
-if errorlevel 1 (
+set "NPM_EXIT_CODE=%ERRORLEVEL%"
+if not "%NPM_EXIT_CODE%"=="0" (
   if defined FALLBACK_NPM_CMD (
     echo.
-    echo [*] %DISPLAY_NPM_CMD% failed. Retrying with %FALLBACK_NPM_CMD%...
-    echo     (lock file may be out of sync — npm install will regenerate it)
+    echo [*] %DISPLAY_NPM_CMD% failed with exit %NPM_EXIT_CODE%. Retrying with %FALLBACK_NPM_CMD%...
+        echo     Lock file may be out of sync - npm install will regenerate it.
     echo.
     call %FALLBACK_NPM_CMD%
-    if errorlevel 1 goto :installFailed
+    set "NPM_EXIT_CODE=%ERRORLEVEL%"
+    if not "%NPM_EXIT_CODE%"=="0" goto :installFailed
   ) else (
     goto :installFailed
   )

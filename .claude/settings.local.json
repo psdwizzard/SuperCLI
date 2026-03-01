@@ -11,7 +11,20 @@
       "Bash(git remote add:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebSearch",
+      "WebFetch(domain:ahmetoner.com)",
+      "WebFetch(domain:deepwiki.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:developers.openai.com)",
+      "WebFetch(domain:discuss.ai.google.dev)",
+      "Bash(claude quota:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

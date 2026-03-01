@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, systemPreferences } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -14,6 +14,7 @@ const { ensureDir } = require('./utils');
 let mainWindow;
 const startupProjectPath = resolveStartupProjectPath(app);
 let startupProjectInfo = null;
+let micPermissionDecision = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -27,7 +28,41 @@ function createWindow() {
     }
   });
 
+  const session = mainWindow.webContents.session;
+  const allowedMediaPermissions = new Set(['media', 'audioCapture', 'microphone']);
+
+  session.setPermissionCheckHandler((webContents, permission) => {
+    if (allowedMediaPermissions.has(permission)) {
+      return micPermissionDecision === true;
+    }
+    return false;
+  });
+
+  session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (allowedMediaPermissions.has(permission)) {
+      if (micPermissionDecision === null) {
+        const choice = dialog.showMessageBoxSync(mainWindow, {
+          type: 'question',
+          buttons: ['Allow', 'Deny'],
+          defaultId: 0,
+          cancelId: 1,
+          title: 'Microphone Permission',
+          message: 'Allow SuperCLI to access your microphone?'
+        });
+        micPermissionDecision = choice === 0;
+      }
+      callback(micPermissionDecision === true);
+      return;
+    }
+    callback(false);
+  });
+
   mainWindow.loadFile(path.join(__dirname, '..', '..', 'index.html'));
+
+  // Auto-open DevTools if launched with --open-devtools
+  if (process.argv.includes('--open-devtools')) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
 
   // Initialize terminal module with the main window reference
   initTerminals(mainWindow);
@@ -376,6 +411,313 @@ ipcMain.handle('delete-custom-theme', async (event, themeName) => {
   } catch (error) {
     return { success: false, error: error.message };
   }
+});
+
+// --- Mic Permission Check ---
+
+ipcMain.handle('check-mic-access', async () => {
+  try {
+    const status = systemPreferences.getMediaAccessStatus('microphone');
+    // Returns 'granted', 'denied', 'restricted', 'unknown', or 'not-determined'
+    return {
+      status,
+      appDecision: micPermissionDecision,
+      platform: process.platform
+    };
+  } catch (err) {
+    return { status: 'unknown', error: err.message, appDecision: micPermissionDecision, platform: process.platform };
+  }
+});
+
+// --- Quota IPC Handlers ---
+
+ipcMain.handle('fetch-claude-quota', async () => {
+  try {
+    const scrapeWin = new BrowserWindow({
+      width: 800,
+      height: 600,
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    });
+
+    return new Promise((resolve) => {
+      let resolved = false;
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          scrapeWin.destroy();
+          resolve({ success: false, error: 'Timed out loading Claude usage page' });
+        }
+      }, 20000);
+
+      scrapeWin.webContents.on('did-finish-load', async () => {
+        try {
+          const result = await scrapeWin.webContents.executeJavaScript(`
+            new Promise((resolve) => {
+              let attempts = 0;
+              const check = () => {
+                if (window.location.href.includes('/login') || window.location.href.includes('/auth')) {
+                  resolve({ needsLogin: true });
+                  return;
+                }
+                // Try multiple selectors for percentage data
+                const selectors = [
+                  'span.text-2xl.font-semibold',
+                  '[class*="text-2xl"][class*="font-semibold"]',
+                  '[class*="usage"] [class*="percent"]',
+                  '[data-testid*="usage"] span',
+                  '[class*="progress"] span'
+                ];
+                let pcts = [];
+                for (const sel of selectors) {
+                  try {
+                    const spans = document.querySelectorAll(sel);
+                    spans.forEach(s => {
+                      const m = s.textContent.match(/(\\d+)\\s*%/);
+                      if (m) pcts.push(parseInt(m[1], 10));
+                    });
+                  } catch (_) {}
+                  if (pcts.length >= 1) break;
+                }
+                // Fallback: regex scan body text
+                if (pcts.length === 0) {
+                  const bodyText = document.body.innerText || '';
+                  const matches = bodyText.match(/(\\d+)\\s*%/g);
+                  if (matches) {
+                    pcts = matches.map(m => parseInt(m, 10)).filter(n => n >= 0 && n <= 100);
+                  }
+                }
+                if (pcts.length >= 1) {
+                  resolve({ pcts });
+                } else if (++attempts < 30) {
+                  setTimeout(check, 500);
+                } else {
+                  resolve({ pcts: [], body: document.body.innerText.slice(0, 500) });
+                }
+              };
+              check();
+            });
+          `);
+
+          clearTimeout(timeout);
+          if (resolved) return;
+          resolved = true;
+          scrapeWin.destroy();
+
+          if (result.needsLogin) {
+            resolve({ success: false, error: 'Not logged in to Claude. Click the login button in the usage popup first.' });
+          } else if (result.pcts && result.pcts.length >= 2) {
+            resolve({
+              success: true,
+              data: {
+                fiveHourRemaining: result.pcts[0],
+                weeklyRemaining: result.pcts[1]
+              }
+            });
+          } else if (result.pcts && result.pcts.length === 1) {
+            resolve({
+              success: true,
+              data: {
+                fiveHourRemaining: result.pcts[0],
+                weeklyRemaining: null
+              }
+            });
+          } else {
+            resolve({ success: false, error: 'Could not find usage data on page' });
+          }
+        } catch (err) {
+          clearTimeout(timeout);
+          if (!resolved) {
+            resolved = true;
+            scrapeWin.destroy();
+            resolve({ success: false, error: err.message });
+          }
+        }
+      });
+
+      scrapeWin.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+        clearTimeout(timeout);
+        if (!resolved) {
+          resolved = true;
+          scrapeWin.destroy();
+          resolve({ success: false, error: `Failed to load page: ${errorDescription}` });
+        }
+      });
+
+      scrapeWin.loadURL('https://claude.ai/settings/usage');
+    });
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('fetch-codex-quota', async () => {
+  try {
+    // Use a hidden BrowserWindow to render the SPA and extract data from the DOM
+    const scrapeWin = new BrowserWindow({
+      width: 800,
+      height: 600,
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      }
+    });
+
+    return new Promise((resolve) => {
+      let resolved = false;
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          scrapeWin.destroy();
+          resolve({ success: false, error: 'Timed out loading ChatGPT usage page' });
+        }
+      }, 20000);
+
+      scrapeWin.webContents.on('did-finish-load', async () => {
+        try {
+          // Wait for SPA to render the usage data
+          const result = await scrapeWin.webContents.executeJavaScript(`
+            new Promise((resolve) => {
+              let attempts = 0;
+              const check = () => {
+                // Check if redirected to login
+                if (window.location.href.includes('/auth/') || window.location.href.includes('login')) {
+                  resolve({ needsLogin: true });
+                  return;
+                }
+                // Try multiple CSS selectors for percentage spans
+                const selectors = [
+                  'span.text-2xl.font-semibold',
+                  '[class*="text-2xl"][class*="font-semibold"]',
+                  '[class*="usage"] [class*="percent"]',
+                  '[data-testid*="usage"] span'
+                ];
+                let pcts = [];
+                for (const sel of selectors) {
+                  try {
+                    const spans = document.querySelectorAll(sel);
+                    spans.forEach(s => {
+                      const m = s.textContent.match(/(\\d+)\\s*%/);
+                      if (m) pcts.push(parseInt(m[1], 10));
+                    });
+                  } catch (_) {}
+                  if (pcts.length >= 1) break;
+                }
+                // Fallback: regex scan page body text for percentages near usage keywords
+                if (pcts.length === 0) {
+                  const bodyText = document.body.innerText || '';
+                  const matches = bodyText.match(/(\\d+)\\s*%/g);
+                  if (matches) {
+                    pcts = matches.map(m => parseInt(m, 10)).filter(n => n >= 0 && n <= 100);
+                  }
+                }
+                if (pcts.length >= 1) {
+                  resolve({ pcts });
+                } else if (++attempts < 30) {
+                  setTimeout(check, 500);
+                } else {
+                  resolve({ pcts: [], body: document.body.innerText.slice(0, 500) });
+                }
+              };
+              check();
+            });
+          `);
+
+          clearTimeout(timeout);
+          if (resolved) return;
+          resolved = true;
+          scrapeWin.destroy();
+
+          if (result.needsLogin) {
+            resolve({ success: false, error: 'Not logged in to ChatGPT. Click the login button in the usage popup first.' });
+          } else if (result.pcts && result.pcts.length >= 2) {
+            resolve({
+              success: true,
+              data: {
+                weeklyRemaining: result.pcts[0],
+                fiveHourRemaining: result.pcts[1]
+              }
+            });
+          } else if (result.pcts && result.pcts.length === 1) {
+            resolve({
+              success: true,
+              data: {
+                weeklyRemaining: result.pcts[0],
+                fiveHourRemaining: null
+              }
+            });
+          } else {
+            resolve({ success: false, error: 'Could not find usage data on page' });
+          }
+        } catch (err) {
+          clearTimeout(timeout);
+          if (!resolved) {
+            resolved = true;
+            scrapeWin.destroy();
+            resolve({ success: false, error: err.message });
+          }
+        }
+      });
+
+      scrapeWin.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+        clearTimeout(timeout);
+        if (!resolved) {
+          resolved = true;
+          scrapeWin.destroy();
+          resolve({ success: false, error: `Failed to load page: ${errorDescription}` });
+        }
+      });
+
+      scrapeWin.loadURL('https://chatgpt.com/codex/settings/usage');
+    });
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+function createLoginWindow(url, title) {
+  const loginWin = new BrowserWindow({
+    width: 900,
+    height: 750,
+    parent: mainWindow,
+    title,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+
+  // Handle OAuth popups (Google, Microsoft, etc.) — redirect into the same window
+  loginWin.webContents.setWindowOpenHandler(({ url: popupUrl }) => {
+    loginWin.loadURL(popupUrl);
+    return { action: 'deny' };
+  });
+
+  // Some OAuth flows use window.open with a blank target that Electron eats silently.
+  // Also handle navigation within the window so Google sign-in completes properly.
+  loginWin.webContents.on('will-navigate', (event, navUrl) => {
+    // Allow all navigations within the login window
+  });
+
+  loginWin.loadURL(url);
+
+  return new Promise((resolve) => {
+    loginWin.on('closed', () => {
+      resolve({ success: true });
+    });
+  });
+}
+
+ipcMain.handle('open-codex-login', async () => {
+  return createLoginWindow('https://chatgpt.com/auth/login', 'Log in to ChatGPT — then close this window');
+});
+
+ipcMain.handle('open-claude-login', async () => {
+  return createLoginWindow('https://claude.ai/login', 'Log in to Claude — then close this window');
 });
 
 // --- App Lifecycle ---

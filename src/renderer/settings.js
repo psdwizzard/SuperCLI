@@ -11,6 +11,7 @@ let backupEnabledChk, backupIntervalInput, backupRetentionInput, backupTargetDir
 let ghEnabledChk, ghTokenInput, ghIssueDefaultStateSelect, ghIssueDefaultLabelsInput, ghCommentOnCloseChk, ghCloseCommentInput, ghCommentOnReopenChk, ghReopenCommentInput;
 let todoPanel;
 let inputInfo;
+let settingsTabs, settingsTabBasic, settingsTabAdvanced;
 
 function init() {
   settingsModal = document.getElementById('settingsModal');
@@ -50,6 +51,37 @@ function init() {
   ghReopenCommentInput = document.getElementById('ghReopenComment');
   todoPanel = document.getElementById('todoPanel');
   inputInfo = document.getElementById('inputInfo');
+
+  settingsTabs = document.querySelectorAll('.settings-tab');
+  settingsTabBasic = document.getElementById('settingsTabBasic');
+  settingsTabAdvanced = document.getElementById('settingsTabAdvanced');
+
+  settingsTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      settingsTabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const target = tab.getAttribute('data-tab');
+      if (target === 'basic') {
+        settingsTabBasic.classList.add('active');
+        settingsTabAdvanced.classList.remove('active');
+      } else {
+        settingsTabBasic.classList.remove('active');
+        settingsTabAdvanced.classList.add('active');
+      }
+    });
+  });
+
+  if (settingsClose) {
+    settingsClose.addEventListener('click', () => {
+      settingsModal.classList.remove('active');
+    });
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && settingsModal && settingsModal.classList.contains('active')) {
+      settingsModal.classList.remove('active');
+    }
+  });
 }
 
 function openSettingsModal() {

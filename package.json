@@ -5,7 +5,9 @@
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron ."
+    "dev": "electron .",
+    "agent:diary": "node scripts/agent-diary.js",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "keywords": [
     "electron",

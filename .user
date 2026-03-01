@@ -10,7 +10,7 @@
       "remember_window_bounds": false
     },
     "ui": {
-      "theme": "dark",
+      "theme": "matrix",
       "font_size": 14
     }
   },
@@ -35,6 +35,7 @@
   "integrations": {
     "github": {
       "enabled": true,
+      "token": "",
       "issue_state": "open",
       "labels": "",
       "comment_on_close": false,

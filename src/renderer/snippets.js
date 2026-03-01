@@ -26,6 +26,7 @@ function setSnippetPanelVisible(visible) {
   } else {
     snippetPanel.classList.remove('active');
   }
+  requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('panels-changed')));
 }
 
 async function loadSnippets(projectPath) {

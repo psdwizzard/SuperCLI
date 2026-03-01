@@ -174,6 +174,16 @@ function resolveStartupProjectPath(app) {
     }
   }
 
+  // Fallback: use process.cwd() if no candidates found and it isn't the app directory
+  if (candidates.length === 0) {
+    const cwd = process.cwd();
+    let appDir = null;
+    try { appDir = path.resolve(app.getAppPath()); } catch (_) {}
+    if (!appDir || path.resolve(cwd) !== appDir) {
+      candidates.push(cwd);
+    }
+  }
+
   for (const candidate of candidates) {
     try {
       const abs = path.resolve(candidate);

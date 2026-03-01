@@ -88,7 +88,6 @@
         <button class="project-btn" id="todoBtn" title="Show/Hide TODO">Todo</button>
         <button class="project-btn" id="shortcutsBtn" title="Keyboard Shortcuts">Shortcuts</button>
         <button class="project-btn" id="settingsBtn" title="Settings">Settings</button>
-        <button class="debug-btn" id="debugBtn" title="Open DevTools">Debug Tools</button>
       </div>
     </div>
 
@@ -108,69 +107,74 @@
 
       <!-- Terminal display area -->
       <div class="terminal-container" id="terminalContainer"></div>
+
+      <!-- Snippet side panel -->
+      <div class="snippet-panel" id="snippetPanel">
+        <div class="snippet-header">
+          <span class="snippet-title">Snippets</span>
+          <button class="snippet-close" title="Close">&#x00d7;</button>
+        </div>
+        <div class="snippet-body">
+          <input class="snippet-search todo-input" type="text" placeholder="Search snippets..." />
+          <select class="snippet-category-filter todo-input" style="margin-top: 6px;">
+            <option value="">All Categories</option>
+            <option value="Prompts">Prompts</option>
+            <option value="Commands">Commands</option>
+            <option value="General">General</option>
+          </select>
+          <div class="snippet-empty" style="margin-top: 8px;">No snippets yet. Add one below.</div>
+          <div class="snippet-list" style="margin-top: 8px;"></div>
+        </div>
+        <div class="snippet-footer">
+          <input class="snippet-name-input todo-input" type="text" placeholder="Snippet name" />
+          <textarea class="snippet-content-input todo-input" placeholder="Snippet content" rows="3" style="resize: vertical; min-height: 60px;"></textarea>
+          <input class="snippet-category-input todo-input" type="text" placeholder="Category (optional)" />
+          <button class="snippet-add-btn todo-add-btn">Add Snippet</button>
+        </div>
+      </div>
+
+      <!-- Todo side panel -->
+      <div class="todo-panel" id="todoPanel">
+        <div class="todo-header">
+          <span class="todo-title">Project TODO</span>
+          <button class="todo-close" id="todoCloseBtn" title="Close">&#x00d7;</button>
+        </div>
+        <div class="todo-body">
+          <div class="todo-section-title">Local TODO</div>
+          <div id="todoEmptyState" class="todo-empty">No items yet. Add one below.</div>
+          <div id="todoList" class="todo-list"></div>
+          <div class="todo-section-title">GitHub Issues</div>
+          <div class="todo-gh-controls">
+            <select id="ghIssueState" class="todo-input">
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="all">Open + Closed</option>
+            </select>
+            <input id="ghIssueLabels" class="todo-input" type="text" placeholder="labels (comma-separated)" />
+            <button id="ghIssueReloadBtn" class="todo-add-btn" title="Sync issues">Sync</button>
+          </div>
+          <div id="ghIssueMeta" class="todo-empty">GitHub not configured yet.</div>
+          <div id="ghIssueEmpty" class="todo-empty" style="display:none;">No issues found.</div>
+          <div id="ghIssueList" class="todo-list"></div>
+        </div>
+        <div class="todo-footer">
+          <input id="todoAddSection" class="todo-input" type="text" placeholder="section (optional)" />
+          <input id="todoAddInput" class="todo-input" type="text" placeholder="Add a new todo" />
+          <button id="todoReloadBtn" class="todo-add-btn" title="Reload from disk">Reload</button>
+          <button id="todoSaveBtn" class="todo-add-btn" title="Save to TODO.md">Save</button>
+          <button id="todoAddBtn" class="todo-add-btn">Add</button>
+        </div>
+      </div>
     </div>
 
     <!-- Input toolbar -->
     <div class="input-toolbar">
+      <div class="logo-container" id="logoContainer"></div>
+      <button class="mic-btn" id="micBtn" title="Voice Input">&#x1f399;</button>
       <button class="input-tool-btn" id="numberedListBtn" title="Numbered list">1.</button>
-    </div>
-
-    <!-- Snippet side panel -->
-    <div class="snippet-panel" id="snippetPanel">
-      <div class="snippet-header">
-        <span class="snippet-title">Snippets</span>
-        <button class="snippet-close" title="Close">&#x00d7;</button>
-      </div>
-      <div class="snippet-body">
-        <input class="snippet-search todo-input" type="text" placeholder="Search snippets..." />
-        <select class="snippet-category-filter todo-input" style="margin-top: 6px;">
-          <option value="">All Categories</option>
-          <option value="Prompts">Prompts</option>
-          <option value="Commands">Commands</option>
-          <option value="General">General</option>
-        </select>
-        <div class="snippet-empty" style="margin-top: 8px;">No snippets yet. Add one below.</div>
-        <div class="snippet-list" style="margin-top: 8px;"></div>
-      </div>
-      <div class="snippet-footer">
-        <input class="snippet-name-input todo-input" type="text" placeholder="Snippet name" />
-        <textarea class="snippet-content-input todo-input" placeholder="Snippet content" rows="3" style="resize: vertical; min-height: 60px;"></textarea>
-        <input class="snippet-category-input todo-input" type="text" placeholder="Category (optional)" />
-        <button class="snippet-add-btn todo-add-btn">Add Snippet</button>
-      </div>
-    </div>
-
-    <!-- Todo side panel -->
-    <div class="todo-panel" id="todoPanel">
-      <div class="todo-header">
-        <span class="todo-title">Project TODO</span>
-        <button class="todo-close" id="todoCloseBtn" title="Close">&#x00d7;</button>
-      </div>
-      <div class="todo-body">
-        <div class="todo-section-title">Local TODO</div>
-        <div id="todoEmptyState" class="todo-empty">No items yet. Add one below.</div>
-        <div id="todoList" class="todo-list"></div>
-        <div class="todo-section-title">GitHub Issues</div>
-        <div class="todo-gh-controls">
-          <select id="ghIssueState" class="todo-input">
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-            <option value="all">Open + Closed</option>
-          </select>
-          <input id="ghIssueLabels" class="todo-input" type="text" placeholder="labels (comma-separated)" />
-          <button id="ghIssueReloadBtn" class="todo-add-btn" title="Sync issues">Sync</button>
-        </div>
-        <div id="ghIssueMeta" class="todo-empty">GitHub not configured yet.</div>
-        <div id="ghIssueEmpty" class="todo-empty" style="display:none;">No issues found.</div>
-        <div id="ghIssueList" class="todo-list"></div>
-      </div>
-      <div class="todo-footer">
-        <input id="todoAddSection" class="todo-input" type="text" placeholder="section (optional)" />
-        <input id="todoAddInput" class="todo-input" type="text" placeholder="Add a new todo" />
-        <button id="todoReloadBtn" class="todo-add-btn" title="Reload from disk">Reload</button>
-        <button id="todoSaveBtn" class="todo-add-btn" title="Save to TODO.md">Save</button>
-        <button id="todoAddBtn" class="todo-add-btn">Add</button>
-      </div>
+      <div class="usage-badges" id="usageBadges"></div>
+      <div class="input-toolbar-spacer"></div>
+      <span class="input-toolbar-info" id="inputInfo">Ready</span>
     </div>
 
     <!-- Input area at bottom -->
@@ -182,10 +186,9 @@
           placeholder="Type commands here to see them logged... (The AI CLI runs in the external window)"
           rows="1"
         ></textarea>
-        <button class="send-btn" id="sendBtn">Send</button>
-      </div>
-      <div class="input-info">
-        <span id="inputInfo">Ready</span>
+        <div class="input-action-group">
+          <button class="send-btn" id="sendBtn">Send</button>
+        </div>
       </div>
     </div>
   </div>
@@ -193,133 +196,146 @@
   <!-- Settings Modal -->
   <div class="modal" id="settingsModal">
     <div class="modal-content settings">
-      <h2>Settings</h2>
-      <p class="modal-subtitle">Project .user preferences and rules</p>
-      <div class="settings-meta">
-        <span>Active project: </span><span id="settingsProjectName">None</span>
-      </div>
-      <div class="settings-section">
-        <h3 class="settings-subhead">General</h3>
-        <div class="settings-grid">
-          <label for="profileName">Profile name</label>
-          <input id="profileName" class="settings-input" type="text" placeholder="Your name" />
-
-          <label for="profileNotes">Notes</label>
-          <input id="profileNotes" class="settings-input" type="text" placeholder="Notes about this project" />
-
-          <label>Restore session on launch</label>
-          <input id="restoreOnLaunch" type="checkbox" class="settings-checkbox" />
-
-          <label>Remember window bounds</label>
-          <input id="rememberWindowBounds" type="checkbox" class="settings-checkbox" />
-
-          <label for="themeSelect">Theme</label>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <select id="themeSelect" class="settings-select" style="flex: 1;">
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-              <option value="deep-blue">Deep Blue</option>
-              <option value="light-grey">Light Grey</option>
-              <option value="end-times">End Times</option>
-              <option value="matrix">Green Matrix</option>
-            </select>
-            <button class="modal-btn" id="createThemeBtn" style="white-space: nowrap; padding: 6px 12px; font-size: 12px;">Create Theme</button>
+      <div class="settings-header">
+        <div class="settings-title-area">
+          <h2>Settings</h2>
+          <div class="settings-meta">
+            <span>Project: </span><span id="settingsProjectName">None</span>
           </div>
-
-          <label for="fontSize">Font size</label>
-          <input id="fontSize" class="settings-input" type="number" min="8" max="28" step="1" />
+        </div>
+        <div class="settings-tabs" id="settingsTabs">
+          <button class="settings-tab active" data-tab="basic">Basic</button>
+          <button class="settings-tab" data-tab="advanced">Advanced</button>
+        </div>
+        <div class="settings-header-actions">
+          <button class="modal-btn modal-cancel" id="settingsReload">Reload</button>
+          <button class="modal-btn modal-confirm" id="settingsSave">Save</button>
+          <button class="modal-btn" id="settingsClose">Close</button>
         </div>
       </div>
 
-      <div class="settings-section">
-        <h3 class="settings-subhead">Python</h3>
-        <div class="settings-grid">
-          <label for="pyDepThreshold">Auto-venv when deps &ge;</label>
-          <input id="pyDepThreshold" class="settings-input" type="number" min="0" step="1" />
+      <div class="settings-tab-content active" id="settingsTabBasic">
+        <div class="settings-section">
+          <div class="settings-grid">
+            <label for="profileName">Profile name</label>
+            <input id="profileName" class="settings-input" type="text" placeholder="Your name" />
 
-          <label for="pyVenvDir">Venv directory</label>
-          <input id="pyVenvDir" class="settings-input" type="text" placeholder=".venv" />
+            <label for="themeSelect">Theme</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <select id="themeSelect" class="settings-select" style="flex: 1;">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+                <option value="deep-blue">Deep Blue</option>
+                <option value="light-grey">Light Grey</option>
+                <option value="end-times">End Times</option>
+                <option value="matrix">Green Matrix</option>
+              </select>
+              <button class="modal-btn" id="createThemeBtn" style="white-space: nowrap; padding: 6px 12px; font-size: 12px;">Create Theme</button>
+            </div>
 
-          <label for="pyExe">Python executable</label>
-          <input id="pyExe" class="settings-input" type="text" placeholder="python" />
+            <label for="profileNotes">Notes</label>
+            <input id="profileNotes" class="settings-input" type="text" placeholder="Notes about this project" />
 
-          <label>Use requirements.txt</label>
-          <input id="pyUseReq" type="checkbox" class="settings-checkbox" />
-
-          <label for="pyEntrypoint">Entry point</label>
-          <input id="pyEntrypoint" class="settings-input" type="text" placeholder="main.py" />
-
-          <label>Include script templates</label>
-          <input id="pyIncludeTemplates" type="checkbox" class="settings-checkbox" />
-        </div>
-        <div class="settings-grid full">
-          <label for="pyInstallBat">install.bat template</label>
-          <textarea id="pyInstallBat" class="settings-textarea small" spellcheck="false"></textarea>
-
-          <label for="pyRunBat">run.bat template</label>
-          <textarea id="pyRunBat" class="settings-textarea small" spellcheck="false"></textarea>
-        </div>
-        <div class="modal-actions">
-          <button class="modal-btn" id="settingsGenDefaults">Fill default Python templates</button>
+            <label>Restore session on launch</label>
+            <input id="restoreOnLaunch" type="checkbox" class="settings-checkbox" />
+          </div>
         </div>
       </div>
 
-      <div class="settings-section">
-        <h3 class="settings-subhead">Backup</h3>
-        <div class="settings-grid">
-          <label>Enable automatic backups</label>
-          <input id="backupEnabled" type="checkbox" class="settings-checkbox" />
+      <div class="settings-tab-content" id="settingsTabAdvanced">
+        <div class="settings-section">
+          <div class="settings-grid">
+            <label>Remember window bounds</label>
+            <input id="rememberWindowBounds" type="checkbox" class="settings-checkbox" />
 
-          <label for="backupInterval">Backup interval (minutes)</label>
-          <input id="backupInterval" class="settings-input" type="number" min="1" step="1" placeholder="60" />
-
-          <label for="backupRetention">Keep last N backups</label>
-          <input id="backupRetention" class="settings-input" type="number" min="1" step="1" placeholder="4" />
-
-          <label for="backupTargetDir">Backup directory</label>
-          <input id="backupTargetDir" class="settings-input" type="text" placeholder=".supercli/backups" />
-
-          <label>Compress backups (ZIP)</label>
-          <input id="backupCompress" type="checkbox" class="settings-checkbox" />
+            <label for="fontSize">Font size</label>
+            <input id="fontSize" class="settings-input" type="number" min="8" max="28" step="1" />
+          </div>
         </div>
-        <p class="settings-hint">Backups include .supercli/** and TODO.md by default. Files are timestamped and rotated based on retention count.</p>
-      </div>
-      <div class="settings-section">
-        <h3 class="settings-subhead">GitHub</h3>
-        <div class="settings-grid">
-          <label for="ghEnabled">Enable GitHub issues</label>
-          <input id="ghEnabled" type="checkbox" class="settings-checkbox" />
-          <label for="ghToken">GitHub token</label>
-          <input id="ghToken" class="settings-input" type="password" placeholder="ghp_..." />
-          <label for="ghIssueDefaultState">Default issue state</label>
-          <select id="ghIssueDefaultState" class="settings-select">
-            <option value="open">Open</option>
-            <option value="closed">Closed</option>
-            <option value="all">Open + Closed</option>
-          </select>
-          <label for="ghIssueDefaultLabels">Default labels</label>
-          <input id="ghIssueDefaultLabels" class="settings-input" type="text" placeholder="bug,help wanted" />
-          <label for="ghCommentOnClose">Comment when closing</label>
-          <input id="ghCommentOnClose" type="checkbox" class="settings-checkbox" />
-          <label for="ghCloseComment">Close comment</label>
-          <input id="ghCloseComment" class="settings-input" type="text" placeholder="Closed via SuperCLI." />
-          <label for="ghCommentOnReopen">Comment when reopening</label>
-          <input id="ghCommentOnReopen" type="checkbox" class="settings-checkbox" />
-          <label for="ghReopenComment">Reopen comment</label>
-          <input id="ghReopenComment" class="settings-input" type="text" placeholder="Reopened via SuperCLI." />
-        </div>
-        <p class="settings-hint">Repo auto-detected from .git/config. Use {{number}} and {{title}} in comments.</p>
-      </div>
 
-      <div class="settings-section">
-        <label class="settings-label"><input type="checkbox" id="settingsShowJson" /> Advanced: show raw .user JSON</label>
-        <textarea id="settingsUserJson" class="settings-textarea" style="display:none" spellcheck="false" placeholder="{\n  &quot;version&quot;: 1,\n  ...\n}"></textarea>
-        <p class="settings-hint">Project-level .user overrides home (~/.supercli.user). Save writes to project .user.</p>
-      </div>
-      <div class="modal-actions">
-        <button class="modal-btn modal-cancel" id="settingsReload">Reload</button>
-        <button class="modal-btn modal-confirm" id="settingsSave">Save</button>
-        <button class="modal-btn" id="settingsClose">Close</button>
+        <div class="settings-section">
+          <h3 class="settings-subhead">Python</h3>
+          <div class="settings-grid">
+            <label for="pyDepThreshold">Auto-venv when deps &ge;</label>
+            <input id="pyDepThreshold" class="settings-input" type="number" min="0" step="1" />
+
+            <label for="pyVenvDir">Venv directory</label>
+            <input id="pyVenvDir" class="settings-input" type="text" placeholder=".venv" />
+
+            <label for="pyExe">Python executable</label>
+            <input id="pyExe" class="settings-input" type="text" placeholder="python" />
+
+            <label>Use requirements.txt</label>
+            <input id="pyUseReq" type="checkbox" class="settings-checkbox" />
+
+            <label for="pyEntrypoint">Entry point</label>
+            <input id="pyEntrypoint" class="settings-input" type="text" placeholder="main.py" />
+
+            <label>Include script templates</label>
+            <input id="pyIncludeTemplates" type="checkbox" class="settings-checkbox" />
+          </div>
+          <div class="settings-grid full">
+            <label for="pyInstallBat">install.bat template</label>
+            <textarea id="pyInstallBat" class="settings-textarea small" spellcheck="false"></textarea>
+
+            <label for="pyRunBat">run.bat template</label>
+            <textarea id="pyRunBat" class="settings-textarea small" spellcheck="false"></textarea>
+          </div>
+          <div class="modal-actions" style="margin-top: 8px;">
+            <button class="modal-btn" id="settingsGenDefaults">Fill default Python templates</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="settings-subhead">Backup</h3>
+          <div class="settings-grid">
+            <label>Enable automatic backups</label>
+            <input id="backupEnabled" type="checkbox" class="settings-checkbox" />
+
+            <label for="backupInterval">Backup interval (minutes)</label>
+            <input id="backupInterval" class="settings-input" type="number" min="1" step="1" placeholder="60" />
+
+            <label for="backupRetention">Keep last N backups</label>
+            <input id="backupRetention" class="settings-input" type="number" min="1" step="1" placeholder="4" />
+
+            <label for="backupTargetDir">Backup directory</label>
+            <input id="backupTargetDir" class="settings-input" type="text" placeholder=".supercli/backups" />
+
+            <label>Compress backups (ZIP)</label>
+            <input id="backupCompress" type="checkbox" class="settings-checkbox" />
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="settings-subhead">GitHub</h3>
+          <div class="settings-grid">
+            <label for="ghEnabled">Enable GitHub issues</label>
+            <input id="ghEnabled" type="checkbox" class="settings-checkbox" />
+            <label for="ghToken">GitHub token</label>
+            <input id="ghToken" class="settings-input" type="password" placeholder="ghp_..." />
+            <label for="ghIssueDefaultState">Default issue state</label>
+            <select id="ghIssueDefaultState" class="settings-select">
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="all">Open + Closed</option>
+            </select>
+            <label for="ghIssueDefaultLabels">Default labels</label>
+            <input id="ghIssueDefaultLabels" class="settings-input" type="text" placeholder="bug,help wanted" />
+            <label for="ghCommentOnClose">Comment when closing</label>
+            <input id="ghCommentOnClose" type="checkbox" class="settings-checkbox" />
+            <label for="ghCloseComment">Close comment</label>
+            <input id="ghCloseComment" class="settings-input" type="text" placeholder="Closed via SuperCLI." />
+            <label for="ghCommentOnReopen">Comment when reopening</label>
+            <input id="ghCommentOnReopen" type="checkbox" class="settings-checkbox" />
+            <label for="ghReopenComment">Reopen comment</label>
+            <input id="ghReopenComment" class="settings-input" type="text" placeholder="Reopened via SuperCLI." />
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <label class="settings-label"><input type="checkbox" id="settingsShowJson" /> Show raw .user JSON</label>
+          <textarea id="settingsUserJson" class="settings-textarea" style="display:none" spellcheck="false" placeholder="{\n  &quot;version&quot;: 1,\n  ...\n}"></textarea>
+        </div>
       </div>
     </div>
   </div>
